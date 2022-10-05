@@ -2,7 +2,7 @@ import uvicorn
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
-from api.controllers import health_check_controller
+from api.controllers import health_check_controller, detection_controller
 
 app = FastAPI(version='1.0', title='OCR Character Extractor',
               description="API for extracting characters from an image")
@@ -18,5 +18,11 @@ app.include_router(
     health_check_controller.router,
     prefix="/health",
     tags=["health"],
+    responses={404: {"description": "Not found"}},
+)
+app.include_router(
+    detection_controller.router,
+    prefix="/Inference",
+    tags=["Inference"],
     responses={404: {"description": "Not found"}},
 )
