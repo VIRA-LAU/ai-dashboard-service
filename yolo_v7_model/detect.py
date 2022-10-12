@@ -1,16 +1,14 @@
-import argparse
 import time
 from pathlib import Path
 import cv2
 import torch
 from numpy import random
 from yolo_v7_model.models.experimental import attempt_load
-from yolo_v7_model.utils.datasets import LoadStreams, LoadImages
-from yolo_v7_model.utils.general import check_img_size, check_requirements, check_imshow, non_max_suppression, apply_classifier, \
-    scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path
+from yolo_v7_model.utils.datasets import LoadImages
+from yolo_v7_model.utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging
 from yolo_v7_model.utils.plots import plot_one_box
-from yolo_v7_model.utils.torch_utils import select_device, load_classifier, time_synchronized, TracedModel
-import shared.helper.json_helpers as json_helper
+from yolo_v7_model.utils.torch_utils import select_device, time_synchronized, TracedModel
+from shared.helper.json_helpers import parse_json
 
 
 def detect(weights='yolov7.pt',
@@ -20,21 +18,13 @@ def detect(weights='yolov7.pt',
            iou_thresh=0.45,
            device='',
            view_img=False,
-           save_txt=False,
-           save_conf=False,
            dont_save=False,
-           classes=None,
-           agnostic_nms=False,
            augment=False,
-           exist_ok=False,
-           no_trace=False):
-
-
-    source, weights, view_img, save_txt, img_size, trace = source, weights, view_img, save_txt, img_size, not no_trace
+           trace=True):
     save_img = not dont_save and not source.endswith('.txt')  # save inference images
 
     # Directories
-    save_dir = Path(json_helper.parse_json("../assets/paths.json")["videos_inferred_path"])
+    save_dir = Path(parse_json("assets/paths.json")["videos_inferred_path"])
     save_dir.mkdir(parents=True, exist_ok=True)  # make dir
 
     # Initialize
@@ -52,12 +42,6 @@ def detect(weights='yolov7.pt',
 
     if half:
         model.half()  # to FP16
-
-    # Second-stage classifier
-    classify = False
-    if classify:
-        modelc = load_classifier(name='resnet101', n=2)  # initialize
-        modelc.load_state_dict(torch.load('weights/resnet101.pt', map_location=device)['model']).to(device).eval()
 
     # Set Dataloader
     vid_path, vid_writer = None, None
@@ -86,7 +70,7 @@ def detect(weights='yolov7.pt',
             old_img_b = img.shape[0]
             old_img_h = img.shape[2]
             old_img_w = img.shape[3]
-            for i in range(3):
+            for _ in range(3):
                 model(img, augment=augment)[0]
 
         # Inference
@@ -95,12 +79,8 @@ def detect(weights='yolov7.pt',
         t2 = time_synchronized()
 
         # Apply NMS
-        pred = non_max_suppression(pred, conf_thresh, iou_thresh, classes=classes, agnostic=agnostic_nms)
+        pred = non_max_suppression(pred, conf_thresh, iou_thresh)
         t3 = time_synchronized()
-
-        # Apply Classifier
-        if classify:
-            pred = apply_classifier(pred, modelc, img, im0s)
 
         # Process detections
         for i, det in enumerate(pred):  # detections per image
@@ -108,7 +88,6 @@ def detect(weights='yolov7.pt',
 
             p = Path(p)  # to Path
             save_path = str(save_dir / p.name)  # img.jpg
-            txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # img.txt
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             if len(det):
                 # Rescale boxes from img_size to im0 size
@@ -121,12 +100,6 @@ def detect(weights='yolov7.pt',
 
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
-                    if save_txt:  # Write to file
-                        xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                        line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
-                        with open(txt_path + '.txt', 'a') as f:
-                            f.write(('%g ' * len(line)).rstrip() % line + '\n')
-
                     if save_img or view_img:  # Add bbox to image
                         label = f'{names[int(cls)]} {conf:.2f}'
                         plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1)
@@ -141,28 +114,29 @@ def detect(weights='yolov7.pt',
 
             # Save results (image with detections)
             if save_img:
-                if dataset.mode == 'image':
-                    cv2.imwrite(save_path, im0)
-                    print(f" The image with the result is saved in: {save_path}")
-                else:  # 'video' or 'stream'
-                    if vid_path != save_path:  # new video
-                        vid_path = save_path
-                        if isinstance(vid_writer, cv2.VideoWriter):
-                            vid_writer.release()  # release previous video writer
-                        if vid_cap:  # video
-                            fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                            w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                            h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                        else:  # stream
-                            fps, w, h = 30, im0.shape[1], im0.shape[0]
-                            save_path += '.mp4'
-                        vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-                    vid_writer.write(im0)
-
-    if save_txt or save_img:
-        s = f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir / 'labels'}" if save_txt else ''
-        # print(f"Results saved to {save_dir}{s}")
+                if vid_path != save_path:  # new video
+                    vid_path = save_path
+                    if isinstance(vid_writer, cv2.VideoWriter):
+                        vid_writer.release()  # release previous video writer
+                    if vid_cap:  # video
+                        fps = vid_cap.get(cv2.CAP_PROP_FPS)
+                        w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    else:  # stream
+                        fps, w, h = 30, im0.shape[1], im0.shape[0]
+                        save_path += '.mp4'
+                    vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+                vid_writer.write(im0)
 
     print(f'Done. ({time.time() - t0:.3f}s)')
 
     return vid_path
+
+
+if __name__ == '__main__':
+    weights = 'yolo_v7_model/weights/yolov7.pt'
+    source = 'datasets/videos_input/57 - Copy.avi'
+    with torch.no_grad():
+        video_path = detect(weights=weights, source=source)
+        strip_optimizer(weights)
+    print(video_path)

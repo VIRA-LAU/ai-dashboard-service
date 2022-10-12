@@ -4,8 +4,8 @@ from starlette.middleware.cors import CORSMiddleware
 
 from api.controllers import health_check_controller, detection_controller
 
-app = FastAPI(version='1.0', title='OCR Character Extractor',
-              description="API for extracting characters from an image")
+app = FastAPI(version='1.0', title='VIP-VIRA',
+              description="API for processing images")
 
 app.add_middleware(CORSMiddleware,
                    allow_origins=["*"],
