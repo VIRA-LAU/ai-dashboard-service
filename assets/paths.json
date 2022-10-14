@@ -1,4 +1,4 @@
 {
-  "videos_input_path": "datasets/videos_input/",
-  "videos_inferred_path": "../datasets/videos_inferred/"
+  "videos_input_path": "dataset/videos_input/",
+  "videos_inferred_path": "dataset/videos_inferred/"
 }

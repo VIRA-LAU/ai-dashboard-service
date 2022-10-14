@@ -1,5 +1,6 @@
-from fastapi import UploadFile, File
 import shutil
+
+from fastapi import UploadFile
 
 
 def save_video(video: UploadFile, destination: str) -> str:
@@ -7,4 +8,3 @@ def save_video(video: UploadFile, destination: str) -> str:
         shutil.copyfileobj(video.file, buffer)
 
         return destination + '{}'.format(video.filename)
-

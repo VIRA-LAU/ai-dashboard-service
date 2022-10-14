@@ -1,9 +1,10 @@
-import numpy as np
 import random
+
+import numpy as np
 import torch
 import torch.nn as nn
 
-from yolo_v7_model.models.common import Conv, DWConv
+from yolo_v7_model.models.common import Conv
 from yolo_v7_model.utils.google_utils import attempt_download
 
 
@@ -218,7 +219,8 @@ class ONNX_TRT(nn.Module):
             # so there is no need to multiplicate.
         else:
             scores *= conf  # conf = obj_conf * cls_conf
-        num_det, det_boxes, det_scores, det_classes = TRT_NMS.apply(boxes, scores, self.background_class, self.box_coding,
+        num_det, det_boxes, det_scores, det_classes = TRT_NMS.apply(boxes, scores, self.background_class,
+                                                                    self.box_coding,
                                                                     self.iou_threshold, self.max_obj,
                                                                     self.plugin_version, self.score_activation,
                                                                     self.score_threshold)

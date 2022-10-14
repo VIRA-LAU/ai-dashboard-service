@@ -1,17 +1,19 @@
 import time
 from pathlib import Path
+
 import cv2
 import torch
 from numpy import random
+
+from shared.helper.json_helpers import parse_json
 from yolo_v7_model.models.experimental import attempt_load
 from yolo_v7_model.utils.datasets import LoadImages
 from yolo_v7_model.utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging
 from yolo_v7_model.utils.plots import plot_one_box
 from yolo_v7_model.utils.torch_utils import select_device, time_synchronized, TracedModel
-from shared.helper.json_helpers import parse_json
 
 
-def detect(weights='yolov7.pt',
+def detect(weights='yolo_v7_model/weights/yolov7.pt',
            source='inference/images',
            img_size=640,
            conf_thresh=0.25,
@@ -21,6 +23,7 @@ def detect(weights='yolov7.pt',
            dont_save=False,
            augment=False,
            trace=True):
+    print("weigths: ", weights)
     save_img = not dont_save and not source.endswith('.txt')  # save inference images
 
     # Directories
@@ -66,7 +69,8 @@ def detect(weights='yolov7.pt',
             img = img.unsqueeze(0)
 
         # Warmup
-        if device.type != 'cpu' and (old_img_b != img.shape[0] or old_img_h != img.shape[2] or old_img_w != img.shape[3]):
+        if device.type != 'cpu' and (
+                old_img_b != img.shape[0] or old_img_h != img.shape[2] or old_img_w != img.shape[3]):
             old_img_b = img.shape[0]
             old_img_h = img.shape[2]
             old_img_w = img.shape[3]
