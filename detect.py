@@ -3,11 +3,11 @@ from pathlib import Path
 import cv2
 import torch
 from numpy import random
-from yolo_v7_model.models.experimental import attempt_load
-from yolo_v7_model.utils.datasets import LoadImages
-from yolo_v7_model.utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging
-from yolo_v7_model.utils.plots import plot_one_box
-from yolo_v7_model.utils.torch_utils import select_device, time_synchronized, TracedModel
+from models.experimental import attempt_load
+from utils.datasets import LoadImages
+from utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging
+from utils.plots import plot_one_box
+from utils.torch_utils import select_device, time_synchronized, TracedModel
 from shared.helper.json_helpers import parse_json
 
 
