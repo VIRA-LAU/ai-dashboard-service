@@ -21,6 +21,7 @@ def detect(weights='yolov7.pt',
            dont_save=False,
            augment=False,
            trace=True):
+    print("weigths: ", weights)
     save_img = not dont_save and not source.endswith('.txt')  # save inference images
 
     # Directories

@@ -1,4 +1,3 @@
-
 class ApiResponse:
     def __init__(self, success: bool = True, data: str = None, error=None):
         """
@@ -10,4 +9,3 @@ class ApiResponse:
         self.data: str = data
         self.error: Exception = error.__str__() if error is not None else ''
         self.success: bool = True
-
