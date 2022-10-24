@@ -5,7 +5,7 @@ import torch
 from numpy import random
 from models.experimental import attempt_load
 from utils.datasets import LoadImages
-from utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging
+from utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging, xyxy2xywh
 from utils.plots import plot_one_box
 from utils.torch_utils import select_device, time_synchronized, TracedModel
 from shared.helper.json_helpers import parse_json
@@ -27,6 +27,8 @@ def detect(weights='yolov7.pt',
     # Directories
     save_dir = Path(parse_json("assets/paths.json")["videos_inferred_path"])
     save_dir.mkdir(parents=True, exist_ok=True)  # make dir
+    save_txt = Path(parse_json("assets/paths.json")["bbox_coordinates_path"])
+    save_txt.mkdir(parents=True, exist_ok=True)  # make dir
 
     # Initialize
     set_logging()
@@ -88,7 +90,9 @@ def detect(weights='yolov7.pt',
             p, s, im0, frame = path, '', im0s, getattr(dataset, 'frame', 0)
 
             p = Path(p)  # to Path
-            save_path = str(save_dir / p.name)  # img.jpg
+            filename = p.name.replace(" ", "_")
+            save_path = str(save_dir / filename)  # img.jpg
+            txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             if len(det):
                 # Rescale boxes from img_size to im0 size
@@ -101,6 +105,11 @@ def detect(weights='yolov7.pt',
 
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
+                    xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
+                    xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
+                    line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
+                    with open(txt_path, 'a') as f:
+                        f.write(('\t'.join(line)) + '\n')
                     if save_img or view_img:  # Add bbox to image
                         label = f'{names[int(cls)]} {conf:.2f}'
                         plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1)
@@ -131,11 +140,11 @@ def detect(weights='yolov7.pt',
 
     print(f'Done. ({time.time() - t0:.3f}s)')
 
-    return vid_path
+    return vid_path, txt_path
 
 
 if __name__ == '__main__':
-    weights = 'yolo_v7_model/weights/yolov7.pt'
+    weights = 'yolo_v7_model/weights/best.pt'
     source = 'datasets/videos_input/57 - Copy.avi'
     with torch.no_grad():
         video_path = detect(weights=weights, source=source)

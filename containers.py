@@ -6,5 +6,5 @@ from domain.contracts.repositories.abstract_detection_service import AbstractDet
 
 class Services(containers.DeclarativeContainer):
     # extractor
-    character_extractor_service = providers.Factory(
+    detection_service = providers.Factory(
         AbstractDetectionService.register(DetectionService))
