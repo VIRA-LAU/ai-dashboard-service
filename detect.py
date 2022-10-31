@@ -119,8 +119,12 @@ def detect(weights='yolov7.pt',
 
             p = Path(p)  # to Path
             filename = (p.name.replace(" ", "_"))
+
             save_path = str(save_dir / (filename.split('.')[0] + "-out" + ".mp4"))  # img.jpg
             txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
+
+
+
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             if len(det):
                 # Rescale boxes from img_size to im0 size
