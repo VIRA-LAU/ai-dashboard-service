@@ -62,6 +62,9 @@ def detect(weights='yolov7.pt',
     set_logging()
     device = select_device(device)
     half = device.type != 'cpu'  # half precision only supported on CUDA
+    sort_tracker = Sort(max_age=5,
+                        min_hits=2,
+                        iou_threshold=0.2)
 
     # Load model
     model = attempt_load(weights, map_location=device)  # load FP32 model
@@ -136,15 +139,16 @@ def detect(weights='yolov7.pt',
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
                 # Write results
-                for *xyxy, conf, cls in reversed(det):
-                    xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                    xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
-                    line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
-                    with open(txt_path, 'a') as f:
-                        f.write(('\t'.join(line)) + '\n')
-                    if save_img or view_img:  # Add bbox to image
-                        label = f'{names[int(cls)]} {conf:.2f}'
-                        plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1)
+                if not track:
+                    for *xyxy, conf, cls in reversed(det):
+                        xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
+                        xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
+                        line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
+                        with open(txt_path, 'a') as f:
+                            f.write(('\t'.join(line)) + '\n')
+                        if save_img or view_img:  # Add bbox to image
+                            label = f'{names[int(cls)]} {conf:.2f}'
+                            plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1)
 
                 dets_to_sort = np.empty((0, 6))
                 # NOTE: We send in detected object class too
@@ -154,9 +158,6 @@ def detect(weights='yolov7.pt',
 
                 # Perform Tracking
             if track:
-                sort_tracker = Sort(max_age=5,
-                                    min_hits=2,
-                                    iou_threshold=0.2)
                 tracked_dets = sort_tracker.update(dets_to_sort)
                 tracks = sort_tracker.getTrackers()
 

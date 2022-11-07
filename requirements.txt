@@ -19,3 +19,4 @@ ipython  # interactive notebook
 psutil  # system utilization
 thop  # FLOPs computation
 dependency_injector==4.40.0
+filterpy
