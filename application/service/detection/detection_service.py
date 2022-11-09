@@ -5,7 +5,10 @@ from utils.general import strip_optimizer
 
 class DetectionService:
     def __init__(self):
-        self.weights = 'weights/best.pt'
+        self.weights = 'weights/detection-weights.pt'
+        # self.weights = 'weights/best.pt'
+
+
 
     def infer_detection(self, source: str) -> str:
         with torch.no_grad():
