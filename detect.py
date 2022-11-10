@@ -38,6 +38,9 @@ def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, na
     return img
 
 
+NUMBER_OF_FRAMES_AFTER_SHOT_MADE = 5
+
+
 def detect(weights='yolov7.pt',
            source='inference/images',
            img_size=640,
@@ -94,7 +97,10 @@ def detect(weights='yolov7.pt',
 
     # madebasketball counter
     shotmade = 0
-    history = False
+    history = []
+
+    for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
+        history.append(False)
     for path, img, im0s, vid_cap in dataset:
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
@@ -148,12 +154,13 @@ def detect(weights='yolov7.pt',
                     line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
                     with open(txt_path, 'a') as f:
                         f.write(('\t'.join(line)) + '\n')
+                    cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
                     if names[int(cls)] == "madebasketball":
-                        if not history:
+                        if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
+                            history.append(False)
+                        else:
                             shotmade += 1
-                            history = True
-                    else:
-                        history = False
+                            history.append(True)
 
                     if save_img or view_img:  # Add bbox to image
                         label = f'{names[int(cls)]} {conf:.2f}'
@@ -162,7 +169,6 @@ def detect(weights='yolov7.pt',
                 dets_to_sort = np.empty((0, 6))
                 # NOTE: We send in detected object class too
                 for x1, y1, x2, y2, conf, detclass in det.cpu().detach().numpy():
-                    print(detclass)
                     if detclass == 0.0:
                         dets_to_sort = np.vstack((dets_to_sort, np.array([x1, y1, x2, y2, conf, detclass])))
 
