@@ -12,6 +12,7 @@ from utils.general import check_img_size, non_max_suppression, scale_coords, str
 from utils.plots import plot_one_box
 from utils.torch_utils import select_device, time_synchronized, TracedModel
 from shared.helper.json_helpers import parse_json
+from PIL import Image
 
 """Function to Draw Bounding boxes"""
 
@@ -63,7 +64,6 @@ def detect(weights='yolov7.pt',
     save_label = Path(parse_json("assets/paths.json")["label_path"])
     save_label.mkdir(parents=True, exist_ok=True)  # make dir
 
-
     # Initialize
     set_logging()
     device = select_device(device)
@@ -104,7 +104,7 @@ def detect(weights='yolov7.pt',
 
     for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
         history.append(False)
-    for path, img, im0s, vid_cap in dataset:
+    for path, img, im0s, image, vid_cap in dataset:
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
@@ -137,6 +137,7 @@ def detect(weights='yolov7.pt',
             filename = (p.name.replace(" ", "_"))
             save_label_video = Path(Path(parse_json("assets/paths.json")["label_path"]) / (filename.split('.')[0]))
             save_label_video.mkdir(parents=True, exist_ok=True)  # make dir
+            cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
             label_per_frame = str(save_label_video / (str(frame) + '.txt'))
             save_path = str(save_dir / (filename.split('.')[0] + "-out" + ".mp4"))  # img.jpg
             txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
