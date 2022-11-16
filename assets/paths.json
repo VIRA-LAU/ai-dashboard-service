@@ -1,5 +1,6 @@
 {
   "videos_input_path": "datasets/videos_input/",
   "videos_inferred_path": "datasets/videos_inferred/",
-  "bbox_coordinates_path": "datasets/bbox_coord/"
+  "bbox_coordinates_path": "datasets/bbox_coord/",
+  "label_path": "datasets/labels/"
 }
