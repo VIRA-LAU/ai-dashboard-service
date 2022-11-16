@@ -156,13 +156,13 @@ def detect(weights='yolov7.pt',
 
                 for *xyxy, conf, cls in reversed(det):
                     xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                    xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
+                    xywh = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
                     line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
                     with open(txt_path, 'a') as f:
                         f.write(('\t'.join(line)) + '\n')
                     label = [str(int(cls)), xywh]
                     with open(label_per_frame, 'a') as f:
-                        f.write(('\t'.join(label)) + '\n')
+                        f.write((' '.join(label)) + '\n')
                     cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
                     if names[int(cls)] == "madebasketball":
                         if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
