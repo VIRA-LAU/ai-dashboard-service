@@ -10,12 +10,12 @@ storage = firebase.storage()
 
 
 @router.get('/video')
-async def(url_path: str):
+async def get_video(url_path: str):
     storage.child(url_path).download(paths["video_input_path"])
 
 
 @router.post("/video")
-async def(path_on_cloud: str):
+async def post_videos(path_on_cloud: str):
     # TODO
     # correct the local path of the infered video
     storage.child(path_on_cloud).put(paths["video_inferred_path"])
