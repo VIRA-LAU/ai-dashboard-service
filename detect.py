@@ -1,4 +1,5 @@
 import argparse
+import shutil
 import time
 from pathlib import Path
 import cv2
@@ -137,6 +138,7 @@ def detect(weights='yolov7.pt',
             filename = (p.name.replace(" ", "_"))
             save_label_video = Path(Path(parse_json("assets/paths.json")["label_path"]) / (filename.split('.')[0]))
             save_label_video.mkdir(parents=True, exist_ok=True)  # make dir
+            shutil.copy('data/classes.txt', save_label_video)
             cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
             label_per_frame = str(save_label_video / (str(frame) + '.txt'))
             save_path = str(save_dir / (filename.split('.')[0] + "-out" + ".mp4"))  # img.jpg
@@ -156,13 +158,14 @@ def detect(weights='yolov7.pt',
 
                 for *xyxy, conf, cls in reversed(det):
                     xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
+                    xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
                     xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
                     line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
                     with open(txt_path, 'a') as f:
                         f.write(('\t'.join(line)) + '\n')
-                    label = [str(int(cls)), xywh]
+                    label = [str(int(cls)), xywh_label]
                     with open(label_per_frame, 'a') as f:
-                        f.write(('\t'.join(label)) + '\n')
+                        f.write((' '.join(label)) + '\n')
                     cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
                     if names[int(cls)] == "madebasketball":
                         if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
