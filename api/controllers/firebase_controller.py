@@ -1,3 +1,4 @@
+import pyrebase as pyrebase
 from fastapi import APIRouter, Response
 from shared.helper.json_helpers import parse_json
 from persistence.repositories.paths import paths

@@ -4,7 +4,7 @@ from containers import Services
 from persistence.repositories.api_response import ApiResponse
 from persistence.repositories.paths import paths
 from shared.helper.file_handler import save_video
-from
+
 router = APIRouter()
 
 detection_service = Services.detection_service()

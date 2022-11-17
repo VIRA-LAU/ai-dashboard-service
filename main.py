@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
-from api.controllers import health_check_controller, detection_controller
+from api.controllers import health_check_controller, detection_controller, firebase_controller
 
 app = FastAPI(version='1.0', title='VIP-VIRA',
               description="API for processing images")
@@ -23,5 +23,12 @@ app.include_router(
     detection_controller.router,
     prefix="/Inference",
     tags=["Inference"],
+    responses={404: {"description": "Not found"}},
+)
+
+app.include_router(
+    firebase_controller.router,
+    prefix="/Firebase",
+    tags=["Database"],
     responses={404: {"description": "Not found"}},
 )
