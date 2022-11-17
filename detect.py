@@ -138,7 +138,6 @@ def detect(weights='yolov7.pt',
             filename = (p.name.replace(" ", "_"))
             save_label_video = Path(Path(parse_json("assets/paths.json")["label_path"]) / (filename.split('.')[0]))
             save_label_video.mkdir(parents=True, exist_ok=True)  # make dir
-            shutil.copy('data/classes.txt', save_label_video)
             cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
             label_per_frame = str(save_label_video / (str(frame) + '.txt'))
             save_path = str(save_dir / (filename.split('.')[0] + "-out" + ".mp4"))  # img.jpg
