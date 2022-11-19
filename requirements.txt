@@ -17,7 +17,6 @@ pandas>=1.1.4
 seaborn>=0.11.0
 ipython  # interactive notebook
 psutil  # system utilization
-thop~=0.1.1.post2209072238
+thop  # FLOPs computation
 dependency_injector==4.40.0
-filterpy~=1.4.5
-Pyrebase~=3.0.27
+filterpy
