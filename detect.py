@@ -1,17 +1,18 @@
-import argparse
 import time
 from pathlib import Path
+
 import cv2
 import numpy as np
 import torch
 from numpy import random
+
 from models.experimental import attempt_load
+from shared.helper.json_helpers import parse_json
 from sort import Sort
 from utils.datasets import LoadImages
 from utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging, xyxy2xywh
 from utils.plots import plot_one_box
 from utils.torch_utils import select_device, time_synchronized, TracedModel
-from shared.helper.json_helpers import parse_json
 
 """Function to Draw Bounding boxes"""
 
@@ -49,6 +50,12 @@ def detect(weights='yolov7.pt',
            augment=False,
            trace=True,
            track=True):
+    frames_shot_made: list = []
+    NUMBER_OF_FRAMES_AFTER_SHOT_MADE = 5
+    shotmade = 0
+    history = []
+    for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
+        history.append(False)
     print("weigths: ", weights)
     save_img = not dont_save and not source.endswith('.txt')  # save inference images
 
@@ -126,8 +133,6 @@ def detect(weights='yolov7.pt',
             save_path = str(save_dir / (filename.split('.')[0] + "-out" + ".mp4"))  # img.jpg
             txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
 
-
-
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             if len(det):
                 # Rescale boxes from img_size to im0 size
@@ -138,17 +143,24 @@ def detect(weights='yolov7.pt',
                     n = (det[:, -1] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
-                # Write results
-                if not track:
-                    for *xyxy, conf, cls in reversed(det):
-                        xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                        xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
-                        line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
-                        with open(txt_path, 'a') as f:
-                            f.write(('\t'.join(line)) + '\n')
-                        if save_img or view_img:  # Add bbox to image
-                            label = f'{names[int(cls)]} {conf:.2f}'
-                            plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1)
+                    # Write results
+                for *xyxy, conf, cls in reversed(det):
+                    xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
+                    xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
+                    line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
+                    with open(txt_path, 'a') as f:
+                        f.write(('\t'.join(line)) + '\n')
+                    if save_img or view_img:  # Add bbox to image
+                        label = f'{names[int(cls)]} {conf:.2f}'
+                        plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1)
+                        print(names[int(cls)])
+                    if names[int(cls)] == "madebasketball":
+                        if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
+                            history.append(False)
+                        else:
+                            shotmade += 1
+                            history.append(True)
+                            frames_shot_made.append(frame)
 
                 dets_to_sort = np.empty((0, 6))
                 # NOTE: We send in detected object class too
@@ -174,11 +186,11 @@ def detect(weights='yolov7.pt',
 
                         [cv2.line(im0, (int(track.centroidarr[i][0]),
                                         int(track.centroidarr[i][1])),
-                                        (int(track.centroidarr[i + 1][0]),
-                                        int(track.centroidarr[i + 1][1])),
-                                        track_color, thickness=round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1)
-                                        for i, _ in enumerate(track.centroidarr)
-                                            if i < len(track.centroidarr) - 1]
+                                  (int(track.centroidarr[i + 1][0]),
+                                   int(track.centroidarr[i + 1][1])),
+                                  track_color, thickness=round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1)
+                         for i, _ in enumerate(track.centroidarr)
+                         if i < len(track.centroidarr) - 1]
                 else:
                     bbox_xyxy = dets_to_sort[:, :4]
                     identities = None
@@ -213,7 +225,7 @@ def detect(weights='yolov7.pt',
 
     print(f'Done. ({time.time() - t0:.3f}s)')
 
-    return vid_path, txt_path
+    return vid_path, txt_path, frames_shot_made
 
 
 if __name__ == '__main__':
