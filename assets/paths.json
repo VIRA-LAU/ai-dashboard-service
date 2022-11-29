@@ -3,5 +3,6 @@
   "videos_inferred_path": "datasets/videos_inferred/",
   "bbox_coordinates_path": "datasets/bbox_coord/",
   "keys_path": "assets/keys.json",
-  "highlights_path": "datasets/highlights/"
+  "highlights_path": "datasets/highlights/",
+  "concatenated_path": "datasets/concatenated/"
 }

@@ -10,5 +10,5 @@ def video_concat(path_to_highlights: list):
 
     final_clip = concatenate_videoclips(clips)
     print(final_clip.duration)
-    final_clip.write_videofile("datasets/concatinated/videos.mp4")
-    return "datasets/concatinated/videos.mp4"
+    final_clip.write_videofile("datasets/concatenated/videos.mp4")
+    return "datasets/concatenated/videos.mp4"
