@@ -1,3 +1,4 @@
+import firebase_admin
 from firebase_admin import credentials, storage
 from persistence.repositories import paths
 # Firebase initialization

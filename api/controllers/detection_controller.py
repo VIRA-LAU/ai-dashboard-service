@@ -8,10 +8,12 @@ from persistence.repositories.paths import paths
 from shared.helper.file_handler import save_video
 from core.video_concat import video_concat
 from domain.models.upload_video_fb import upload_video
+from application.service.highlights_handler import highlights_service
 
 router = APIRouter()
 
 detection_service = Services.detection_service()
+highlights_service = highlights_service.HighlightsService
 
 
 @router.post('/Detection_Inference')
@@ -30,9 +32,12 @@ async def run_inference(video: UploadFile = File(...)) -> ApiResponse:
 async def fetch_run_inference(path: str) -> ApiResponse:
     path_input_video = download_video(video_url_input=path)
     video_inferred_path, bbox_coordinated_path, frames_made = detection_service.infer_detection(source=path_input_video)
-    videos_paths = video_splitter(path_to_video=path_input_video, frames_shot_made=frames_made)
-    concatenated = video_concat(videos_paths)
-    upload_video(destination="", source_video=concatenated)
+    # videos_paths = video_splitter(path_to_video=path_input_video, frames_shot_made=frames_made)
+    # concatenated = video_concat(videos_paths)
+    # upload_video(destination="", source_video=concatenated)
+
+    videos_paths, concatenated = highlights_service.split_concat_send(path_input_video=path_input_video,
+                                                                      frames_made=frames_made, destination="")
 
     print(frames_made)
     return ApiResponse(success=True, data={
