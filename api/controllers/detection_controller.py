@@ -1,6 +1,7 @@
 from fastapi import APIRouter, UploadFile, File
 
 from containers import Services
+from core.song_player import give_song
 from core.video_splitter import video_splitter
 from domain.models.download_video_fb import download_video
 from persistence.repositories.api_response import ApiResponse
@@ -37,10 +38,12 @@ async def fetch_run_inference(path: str) -> ApiResponse:
     path_input_video = download_video(video_url_input=path)
     video_inferred_path, bbox_coordinated_path, frames_made = detection_service.infer_detection(source=path_input_video)
     videos_paths = video_splitter(path_to_video=path_input_video, frames_shot_made=frames_made)
-    concatenated = video_concat(videos_paths)
-    upload_video(destination="", source_video=concatenated)
-    videos_paths, concatenated = highlights_service.split_concat_send(path_input_video=path_input_video,
-                                                                      frames_made=frames_made, destination="")
+    concatenated, video = video_concat(videos_paths)
+    print(video.duration)
+    concatenated_with_music = give_song(video_clip=video, duration=int(video.duration))
+    # upload_video(destination="", source_video=concatenated)
+    # videos_paths, concatenated = highlights_service.split_concat_send(path_input_video=path_input_video,
+    #                                                                   frames_made=frames_made, destination="")
 
     print(frames_made)
     return ApiResponse(success=True, data={

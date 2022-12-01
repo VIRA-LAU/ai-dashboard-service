@@ -229,7 +229,7 @@ def detect(weights='yolov7.pt',
 
 
 if __name__ == '__main__':
-    weights = 'yolo_v7_model/weights/best.pt'
+    weights = 'yolo_v7_model/weights/best1.pt'
     source = 'datasets/videos_input/57 - Copy.avi'
 
     with torch.no_grad():

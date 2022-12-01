@@ -4,5 +4,6 @@
   "bbox_coordinates_path": "datasets/bbox_coord/",
   "keys_path": "assets/keys.json",
   "highlights_path": "datasets/highlights/",
-  "concatenated_path": "datasets/concatenated/"
+  "concatenated_path": "datasets/concatenated/",
+  "song_path": "assets/music/song.mp3"
 }
