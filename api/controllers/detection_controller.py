@@ -9,6 +9,9 @@ from shared.helper.file_handler import save_video
 from core.video_concat import video_concat
 from domain.models.upload_video_fb import upload_video
 from application.service.highlights_handler import highlights_service
+from pydantic import BaseModel
+from typing import Union
+from typing import Dict, Any
 
 router = APIRouter()
 
@@ -16,7 +19,7 @@ detection_service = Services.detection_service()
 highlights_service = highlights_service.HighlightsService
 
 
-@router.post('/Detection_Inference')
+@router.post('/Detection_Inference_video')
 async def run_inference(video: UploadFile = File(...)) -> ApiResponse:
     path_to_input_video = save_video(video=video,
                                      destination=paths["video_input_path"])
@@ -32,9 +35,33 @@ async def run_inference(video: UploadFile = File(...)) -> ApiResponse:
 async def fetch_run_inference(path: str) -> ApiResponse:
     path_input_video = download_video(video_url_input=path)
     video_inferred_path, bbox_coordinated_path, frames_made = detection_service.infer_detection(source=path_input_video)
-    # videos_paths = video_splitter(path_to_video=path_input_video, frames_shot_made=frames_made)
-    # concatenated = video_concat(videos_paths)
-    # upload_video(destination="", source_video=concatenated)
+    videos_paths = video_splitter(path_to_video=path_input_video, frames_shot_made=frames_made)
+    concatenated = video_concat(videos_paths)
+    upload_video(destination="", source_video=concatenated)
+    videos_paths, concatenated = highlights_service.split_concat_send(path_input_video=path_input_video,
+                                                                      frames_made=frames_made, destination="")
+
+    print(frames_made)
+    return ApiResponse(success=True, data={
+        "video_inferred": video_inferred_path,
+        "highlights": videos_paths,
+        "final": concatenated
+    })
+
+
+class Videos(BaseModel):
+    id: str
+    path: Union[str, None] = None
+
+
+@router.post("/Detection_Inference")
+async def fetch_run_inference(video: Videos) -> ApiResponse:
+    print(video)
+    path_input_video = download_video(video_url_input=video.path)
+    video_inferred_path, bbox_coordinated_path, frames_made = detection_service.infer_detection(source=path_input_video)
+    videos_paths = video_splitter(path_to_video=path_input_video, frames_shot_made=frames_made)
+    concatenated = video_concat(videos_paths)
+    upload_video(destination="", source_video=concatenated)
 
     videos_paths, concatenated = highlights_service.split_concat_send(path_input_video=path_input_video,
                                                                       frames_made=frames_made, destination="")
