@@ -39,7 +39,6 @@ async def fetch_run_inference(path: str) -> ApiResponse:
     video_inferred_path, bbox_coordinated_path, frames_made = detection_service.infer_detection(source=path_input_video)
     videos_paths = video_splitter(path_to_video=path_input_video, frames_shot_made=frames_made)
     concatenated, video = video_concat(videos_paths)
-    print(video.duration)
     concatenated_with_music = give_song(video_clip=video, duration=int(video.duration))
     # upload_video(destination="", source_video=concatenated)
     # videos_paths, concatenated = highlights_service.split_concat_send(path_input_video=path_input_video,
@@ -63,12 +62,13 @@ async def fetch_run_inference(video: Videos) -> ApiResponse:
     print(video)
     path_input_video = download_video(video_url_input=video.path)
     video_inferred_path, bbox_coordinated_path, frames_made = detection_service.infer_detection(source=path_input_video)
-    # videos_paths = video_splitter(path_to_video=path_input_video, frames_shot_made=frames_made)
-    # concatenated = video_concat(videos_paths)
+    videos_paths = video_splitter(path_to_video=path_input_video, frames_shot_made=frames_made)
+    concatenated, video_without_music = video_concat(videos_paths)
+    concatenated_with_music = give_song(video_clip=video_without_music, duration=int(video_without_music.duration))
     # upload_video(destination="", source_video=concatenated)
-    videos_paths, concatenated = highlights_service.split_concat_send(path_input_video=path_input_video,
-                                                                      frames_made=frames_made, destination="")
-    email_service.send_mail(userId=video.id)
+    # videos_paths, concatenated = highlights_service.split_concat_send(path_input_video=path_input_video,
+    #                                                                   frames_made=frames_made, destination="")
+    # email_service.send_mail(userId=video.id)
 
     print(frames_made)
     return ApiResponse(success=True, data={
