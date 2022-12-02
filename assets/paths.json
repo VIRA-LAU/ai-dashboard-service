@@ -5,5 +5,6 @@
   "keys_path": "assets/keys.json",
   "highlights_path": "datasets/highlights/",
   "concatenated_path": "datasets/concatenated/",
-  "song_path": "assets/music/song.mp3"
+  "song_path": "assets/music/song.mp3",
+  "concatenated_with_music": "datasets/concatenated_with_music"
 }

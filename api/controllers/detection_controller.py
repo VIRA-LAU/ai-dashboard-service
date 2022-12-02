@@ -76,10 +76,11 @@ async def fetch_run_inference(video: Videos) -> ApiResponse:
         videos_paths = video_splitter(path_to_video=path_input_video, frames_shot_made=frames_made)
         concatenated, video_without_music = video_concat(videos_paths)
         concatenated_with_music = give_song(video_clip=video_without_music, duration=int(video_without_music.duration))
-    #upload_video(destination="", source_video=concatenated)
+
+    url_video = upload_video(id_user=video.id, source_video=concatenated_with_music)
     # videos_paths, concatenated = highlights_service.split_concat_send(path_input_video=path_input_video,
     #                                                                   frames_made=frames_made, destination="")
-    # email_service.send_mail(userId=video.id)
+    mail_success = email_service.send_mail(userId=video.id, link=url_video)
 
     # print(frames_made)
     return ApiResponse(success=True, data={
@@ -87,5 +88,6 @@ async def fetch_run_inference(video: Videos) -> ApiResponse:
         "highlights": videos_paths,
         "video_concatenated": concatenated,
         "video_concatenated_with_music": concatenated_with_music,
-        "shots_made": shots_made
+        "shots_made": shots_made,
+        "mail_success": mail_success
     })
