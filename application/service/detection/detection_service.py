@@ -10,6 +10,6 @@ class DetectionService:
 
     def infer_detection(self, source: str) -> str:
         with torch.no_grad():
-            video_path, txt_path, frames_made = detect(weights=self.weights, source=source)
+            video_path, txt_path, frames_made, shots_made = detect(weights=self.weights, source=source)
             strip_optimizer(self.weights)
-        return video_path, txt_path, frames_made
+        return video_path, txt_path, frames_made, shots_made

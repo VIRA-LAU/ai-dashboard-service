@@ -57,6 +57,7 @@ def detect(weights='yolov7.pt',
     for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
         history.append(False)
     print("weigths: ", weights)
+    print(source)
     save_img = not dont_save and not source.endswith('.txt')  # save inference images
 
     # Directories
@@ -225,7 +226,7 @@ def detect(weights='yolov7.pt',
 
     print(f'Done. ({time.time() - t0:.3f}s)')
 
-    return vid_path, txt_path, frames_shot_made
+    return vid_path, txt_path, frames_shot_made, shotmade
 
 
 if __name__ == '__main__':

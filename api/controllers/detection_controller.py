@@ -36,10 +36,14 @@ async def run_inference(video: UploadFile = File(...)) -> ApiResponse:
 @router.get("/Detection_Inference")
 async def fetch_run_inference(path: str) -> ApiResponse:
     path_input_video = download_video(video_url_input=path)
-    video_inferred_path, bbox_coordinated_path, frames_made = detection_service.infer_detection(source=path_input_video)
-    videos_paths = video_splitter(path_to_video=path_input_video, frames_shot_made=frames_made)
-    concatenated, video = video_concat(videos_paths)
-    concatenated_with_music = give_song(video_clip=video, duration=int(video.duration))
+    video_inferred_path, bbox_coordinated_path, frames_made, shots_made = detection_service.infer_detection(source=path_input_video)
+    videos_paths = ''
+    concatenated = ''
+    if shots_made > 0:
+        videos_paths = video_splitter(path_to_video=path_input_video, frames_shot_made=frames_made)
+        concatenated, video = video_concat(videos_paths)
+        print(video.duration)
+        concatenated_with_music = give_song(video_clip=video, duration=int(video.duration))
     # upload_video(destination="", source_video=concatenated)
     # videos_paths, concatenated = highlights_service.split_concat_send(path_input_video=path_input_video,
     #                                                                   frames_made=frames_made, destination="")
@@ -48,7 +52,8 @@ async def fetch_run_inference(path: str) -> ApiResponse:
     return ApiResponse(success=True, data={
         "video_inferred": video_inferred_path,
         "highlights": videos_paths,
-        "final": concatenated
+        "final": concatenated,
+        "shots_made": shots_made
     })
 
 
@@ -61,7 +66,7 @@ class Videos(BaseModel):
 async def fetch_run_inference(video: Videos) -> ApiResponse:
     print(video)
     path_input_video = download_video(video_url_input=video.path)
-    video_inferred_path, bbox_coordinated_path, frames_made = detection_service.infer_detection(source=path_input_video)
+    video_inferred_path, bbox_coordinated_path, frames_made, shots_made = detection_service.infer_detection(source=path_input_video)
     videos_paths = video_splitter(path_to_video=path_input_video, frames_shot_made=frames_made)
     concatenated, video_without_music = video_concat(videos_paths)
     concatenated_with_music = give_song(video_clip=video_without_music, duration=int(video_without_music.duration))
@@ -74,5 +79,6 @@ async def fetch_run_inference(video: Videos) -> ApiResponse:
     return ApiResponse(success=True, data={
         "video_inferred": video_inferred_path,
         "highlights": videos_paths,
-        "final": concatenated
+        "final": concatenated,
+        "shots_made": shots_made
     })
