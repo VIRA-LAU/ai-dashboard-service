@@ -7,4 +7,4 @@ def give_song(video_clip, duration: int):
     audioclip = AudioFileClip(paths.song_path).subclip(13, 13 + duration)
     videoclip = video_clip.set_audio(audioclip)
     videoclip.write_videofile("datasets/concatenated_with_music/videos.mp4")
-    return videoclip
+    return "datasets/concatenated_with_music/videos.mp4"

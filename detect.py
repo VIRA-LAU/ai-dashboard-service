@@ -135,6 +135,7 @@ def detect(weights='yolov7.pt',
             txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
 
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
+            dets_to_sort = np.empty((0, 6))
             if len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
