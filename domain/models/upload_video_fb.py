@@ -6,6 +6,12 @@ from persistence.repositories import paths
 
 def upload_video(id_user: str,
                  source_video: str = str(os.path.join(paths.concatenated_with_music, "movie.mp4"))) -> str:
+    """
+    Upload video to firebase
+    :param id_user:
+    :param source_video:
+    :return:
+    """
     print(source_video)
     destination = "highlights/" + id_user + ".mp4"
     blob = bucket.blob(destination)  # parameter is the location where we want to store the file on firebase

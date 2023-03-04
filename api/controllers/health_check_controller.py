@@ -8,6 +8,6 @@ async def check_health():
     return Response(status_code=200)
 
 
-@router.post("/")
+@router.post('/')
 async def check_health():
     return {"message": "hello world"}
