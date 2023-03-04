@@ -3,8 +3,20 @@ from starlette.middleware.cors import CORSMiddleware
 
 from api.controllers import health_check_controller, detection_controller
 
+tags_metadata = [
+    {
+        "name": "Health",
+        "description": "Checks the functioning of the endpoint.",
+    },
+    {
+        "name": "Inference",
+        "description": "Runs inference on videos."
+    },
+]
+
 app = FastAPI(version='1.0', title='VIP-VIRA',
-              description="API for processing images")
+              description="API for processing videos",
+              openapi_tags=tags_metadata)
 
 app.add_middleware(CORSMiddleware,
                    allow_origins=["*"],
@@ -15,8 +27,8 @@ app.add_middleware(CORSMiddleware,
 
 app.include_router(
     health_check_controller.router,
-    prefix="/health",
-    tags=["health"],
+    prefix="/Health",
+    tags=["Health"],
     responses={404: {"description": "Not found"}},
 )
 app.include_router(
