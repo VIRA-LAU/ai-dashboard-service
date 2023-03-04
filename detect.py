@@ -90,8 +90,10 @@ def detect(weights: str = 'yolov7.pt',
     '''Directories'''
     save_dir = paths.video_inferred_path
     save_txt = paths.bbox_coordinates_path
+    save_label = paths.labels_path
     save_dir.mkdir(parents=True, exist_ok=True)  # create directory
     save_txt.mkdir(parents=True, exist_ok=True)  # create directory
+    save_label.mkdir(parents=True, exist_ok=True)# create directory
 
     '''Initialize'''
     set_logging()
@@ -124,7 +126,7 @@ def detect(weights: str = 'yolov7.pt',
     old_img_b = 1
     t0 = time.time()
 
-    for path, img, im0s, vid_cap in dataset:
+    for path, img, im0s,image, vid_cap in dataset:
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
@@ -155,8 +157,11 @@ def detect(weights: str = 'yolov7.pt',
 
             p = Path(p)  # to Path
             filename = (p.name.replace(" ", "_"))
-
-            save_path = str(save_dir / (filename.split('.')[0] + "-out" + ".mp4"))
+            save_label_video = Path(save_label / (filename.split('.')[0]))
+            save_label_video.mkdir(parents=True, exist_ok=True)  # make dir
+            cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
+            label_per_frame = str(save_label_video / (str(frame) + '.txt'))
+            save_path = str(save_dir / (filename.split('.')[0] + "-out" + ".mp4"))  # img.jpg
             txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
 
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
@@ -173,26 +178,31 @@ def detect(weights: str = 'yolov7.pt',
                 '''Write results'''
                 for *xyxy, conf, cls in reversed(det):
                     xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
+                    xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
                     xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
                     line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
                     with open(txt_path, 'a') as f:
                         f.write(('\t'.join(line)) + '\n')
+                    label = [str(int(cls)), xywh_label]
+                    with open(label_per_frame, 'a') as f:
+                        f.write((' '.join(label)) + '\n')
+                    cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
+                    if names[int(cls)] == "madebasketball":
+                        if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
+                            history.append(False)
+                        else:
+                            shotmade += 1
+                            history.append(True)
+
                     if save_img or view_img:  # Add bbox to image
                         label = f'{names[int(cls)]} {conf:.2f}'
                         plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1)
-                        print(names[int(cls)])
-                    if names[int(cls)] == "madebasketball":
-                        history.append(False)
-                    else:
-                        shotmade += 1
-                        history.append(True)
-                        frames_shot_made.append(frame)
 
                 dets_to_sort = np.empty((0, 6))
                 # NOTE: We send in detected object class too
                 for x1, y1, x2, y2, conf, detclass in det.cpu().detach().numpy():
-                    dets_to_sort = np.vstack((dets_to_sort,
-                                              np.array([x1, y1, x2, y2, conf, detclass])))
+                    if detclass == 0.0:
+                        dets_to_sort = np.vstack((dets_to_sort, np.array([x1, y1, x2, y2, conf, detclass])))
 
             '''Perform Tracking'''
             if track:
@@ -207,16 +217,16 @@ def detect(weights: str = 'yolov7.pt',
                     confidences = None
 
                     # loop over tracks
-                    for t, track in enumerate(tracks):
-                        track_color = colors[int(track.detclass)]
-
-                        [cv2.line(im0, (int(track.centroidarr[i][0]),
-                                        int(track.centroidarr[i][1])),
-                                  (int(track.centroidarr[i + 1][0]),
-                                   int(track.centroidarr[i + 1][1])),
-                                  track_color, thickness=round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1)
-                         for i, _ in enumerate(track.centroidarr)
-                         if i < len(track.centroidarr) - 1]
+                    # for t, track in enumerate(tracks):
+                    #     track_color = colors[int(track.detclass)]
+                    #
+                    #     [cv2.line(im0, (int(track.centroidarr[i][0]),
+                    #                     int(track.centroidarr[i][1])),
+                    #                     (int(track.centroidarr[i + 1][0]),
+                    #                     int(track.centroidarr[i + 1][1])),
+                    #                     track_color, thickness=round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1)
+                    #                     for i, _ in enumerate(track.centroidarr)
+                    #                         if i < len(track.centroidarr) - 1]
                 else:
                     bbox_xyxy = dets_to_sort[:, :4]
                     identities = None
@@ -249,6 +259,7 @@ def detect(weights: str = 'yolov7.pt',
                 vid_writer.write(im0)
 
     print(f'Done. ({time.time() - t0:.3f}s)')
+    print(f'Total Made Shots: {shotmade}')
     return vid_path, txt_path, frames_shot_made, shotmade
 
 

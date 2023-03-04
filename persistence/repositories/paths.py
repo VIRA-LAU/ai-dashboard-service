@@ -10,3 +10,4 @@ highlights_path = Path(parse_json("assets/paths.json")["highlights_path"])
 concatenated_path = Path(parse_json("assets/paths.json")["concatenated_path"])
 song_path = parse_json("assets/paths.json")["song_path"]
 concatenated_with_music = Path(parse_json("assets/paths.json")["concatenated_with_music"])
+labels_path = Path(parse_json("assets/paths.json")["label_path"])
