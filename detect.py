@@ -84,6 +84,8 @@ def detect(weights: str = 'yolov7.pt',
     history = []
     for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
         history.append(False)
+    '''Sampling rate to generate labels'''
+    NUMBER_OF_FRAMES_PER_LABEL = 20
 
     save_img = not dont_save and not source.endswith('.txt')  # save inference images
 
@@ -93,7 +95,7 @@ def detect(weights: str = 'yolov7.pt',
     save_label = paths.labels_path
     save_dir.mkdir(parents=True, exist_ok=True)  # create directory
     save_txt.mkdir(parents=True, exist_ok=True)  # create directory
-    save_label.mkdir(parents=True, exist_ok=True)# create directory
+    save_label.mkdir(parents=True, exist_ok=True)  # create directory
 
     '''Initialize'''
     set_logging()
@@ -126,7 +128,7 @@ def detect(weights: str = 'yolov7.pt',
     old_img_b = 1
     t0 = time.time()
 
-    for path, img, im0s,image, vid_cap in dataset:
+    for path, img, im0s, image, vid_cap in dataset:
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
@@ -159,10 +161,11 @@ def detect(weights: str = 'yolov7.pt',
             filename = (p.name.replace(" ", "_"))
             save_label_video = Path(save_label / (filename.split('.')[0]))
             save_label_video.mkdir(parents=True, exist_ok=True)  # make dir
-            cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
             label_per_frame = str(save_label_video / (str(frame) + '.txt'))
             save_path = str(save_dir / (filename.split('.')[0] + "-out" + ".mp4"))  # img.jpg
             txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
+            if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
+                cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
 
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             dets_to_sort = np.empty((0, 6))
@@ -184,14 +187,16 @@ def detect(weights: str = 'yolov7.pt',
                     with open(txt_path, 'a') as f:
                         f.write(('\t'.join(line)) + '\n')
                     label = [str(int(cls)), xywh_label]
-                    with open(label_per_frame, 'a') as f:
-                        f.write((' '.join(label)) + '\n')
+                    if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
+                        with open(label_per_frame, 'a') as f:
+                            f.write((' '.join(label)) + '\n')
                     cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
                     if names[int(cls)] == "madebasketball":
                         if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
                             history.append(False)
                         else:
                             shotmade += 1
+                            frames_shot_made.append(frame)
                             history.append(True)
 
                     if save_img or view_img:  # Add bbox to image
@@ -216,17 +221,17 @@ def detect(weights: str = 'yolov7.pt',
                     categories = tracked_dets[:, 4]
                     confidences = None
 
-                    # loop over tracks
-                    # for t, track in enumerate(tracks):
-                    #     track_color = colors[int(track.detclass)]
-                    #
-                    #     [cv2.line(im0, (int(track.centroidarr[i][0]),
-                    #                     int(track.centroidarr[i][1])),
-                    #                     (int(track.centroidarr[i + 1][0]),
-                    #                     int(track.centroidarr[i + 1][1])),
-                    #                     track_color, thickness=round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1)
-                    #                     for i, _ in enumerate(track.centroidarr)
-                    #                         if i < len(track.centroidarr) - 1]
+                    '''loop over tracks'''
+                    for t, track in enumerate(tracks):
+                        track_color = colors[int(track.detclass)]
+
+                        [cv2.line(im0, (int(track.centroidarr[i][0]),
+                                        int(track.centroidarr[i][1])),
+                                  (int(track.centroidarr[i + 1][0]),
+                                   int(track.centroidarr[i + 1][1])),
+                                  track_color, thickness=round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1)
+                         for i, _ in enumerate(track.centroidarr)
+                         if i < len(track.centroidarr) - 1]
                 else:
                     bbox_xyxy = dets_to_sort[:, :4]
                     identities = None
