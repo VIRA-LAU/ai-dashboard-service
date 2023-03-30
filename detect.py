@@ -1,5 +1,7 @@
 import time
 from pathlib import Path
+import sys
+import os
 
 import cv2
 import numpy as np
@@ -12,6 +14,7 @@ from utils.datasets import LoadImages
 from utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging, xyxy2xywh
 from utils.plots import plot_one_box
 from utils.torch_utils import select_device, time_synchronized, TracedModel
+from utils.TubeDETR import stvg
 from persistence.repositories import paths
 
 
@@ -57,7 +60,9 @@ def detect(weights: str = 'yolov7.pt',
            view_img: bool = False,
            dont_save: bool = False,
            augment: bool = False,
-           track: bool = True) -> tuple:
+           track: bool = True,
+           sampling: bool = False,
+           temporal: bool = False) -> tuple:
     """
     Performs inference on an input video
     :param weights: YOLO-V7 .pt file
@@ -73,7 +78,7 @@ def detect(weights: str = 'yolov7.pt',
     :return: vid_path, txt_path, frames_shot_made, shotmade
     """
     print("weigths: ", weights)
-    print(source)
+    # print(source)
     ##################################################################################################################################################
     # Parameters
     ##################################################################################################################################################
@@ -84,9 +89,11 @@ def detect(weights: str = 'yolov7.pt',
     history = []
     for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
         history.append(False)
+    
     '''Sampling rate to generate labels'''
-    NUMBER_OF_FRAMES_PER_LABEL = 20
-
+    if(sampling):
+        NUMBER_OF_FRAMES_PER_LABEL = 20
+    
     save_img = not dont_save and not source.endswith('.txt')  # save inference images
 
     '''Directories'''
@@ -96,6 +103,13 @@ def detect(weights: str = 'yolov7.pt',
     save_dir.mkdir(parents=True, exist_ok=True)  # create directory
     save_txt.mkdir(parents=True, exist_ok=True)  # create directory
     save_label.mkdir(parents=True, exist_ok=True)  # create directory
+
+    '''Temporal Analysis'''
+    if(temporal):
+        temporal_model='utils/TubeDETR/models/checkpoints/res352/vidstg_k4.pth'
+        out_dir = 'datasets/videos_input/'
+        out_dir_frames = 'datasets/videos_input_frames/'
+        source = stvg.analyze(source,temporal_model,out_dir,out_dir_frames)
 
     '''Initialize'''
     set_logging()
@@ -164,8 +178,8 @@ def detect(weights: str = 'yolov7.pt',
             label_per_frame = str(save_label_video / (str(frame) + '.txt'))
             save_path = str(save_dir / (filename.split('.')[0] + "-out" + ".mp4"))  # img.jpg
             txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
-            if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
-                cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
+            #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
+            cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
 
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             dets_to_sort = np.empty((0, 6))
@@ -187,9 +201,9 @@ def detect(weights: str = 'yolov7.pt',
                     with open(txt_path, 'a') as f:
                         f.write(('\t'.join(line)) + '\n')
                     label = [str(int(cls)), xywh_label]
-                    if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
-                        with open(label_per_frame, 'a') as f:
-                            f.write((' '.join(label)) + '\n')
+                    #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
+                    with open(label_per_frame, 'a') as f:
+                        f.write((' '.join(label)) + '\n')
                     cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
                     if names[int(cls)] == "madebasketball":
                         if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
@@ -269,10 +283,11 @@ def detect(weights: str = 'yolov7.pt',
 
 
 if __name__ == '__main__':
-    weights = 'yolo_v7_model/weights/best1.pt'
-    source = 'datasets/videos_input/57 - Copy.avi'
-
-    with torch.no_grad():
-        video_path = detect(weights=weights, source=source)
-        strip_optimizer(weights)
-    print(video_path)
+    weights = 'weights/best_180323_init.pt'
+    source = 'datasets/videos_input/init_second_vid/'
+    for vid in os.listdir(source):
+        with torch.no_grad():
+            video_path = detect(weights=weights, source=source + str(vid))
+            strip_optimizer(weights)
+        print(video_path)
+        torch.cuda.empty_cache()

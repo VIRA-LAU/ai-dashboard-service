@@ -22,6 +22,10 @@ dependency_injector==4.40.0
 
 scikit-image~=0.19.2
 filterpy~=1.4.5
-filterpy
 moviepy
 firebase-admin
+
+ffmpeg_python==0.2.0
+python_hostlist==1.21
+timm==0.4.12
+transformers==4.5.1

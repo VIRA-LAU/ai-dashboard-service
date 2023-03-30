@@ -2,6 +2,23 @@
 *.png
 *.mp4
 *.avi
-
-
+env/
+datasets/bbox_coord/
+datasets/conatenated/
+datasets/concatenated_with_music/
+datasets/labels/
+datasets/videos_inferred/
+datasets/videos_input/
+datasets/videos_input_frames/
+datasets/videos_inputs_datasets/
+.idea/
+traced_model.pt
+__pycache__
+utils/__pycache__/
+utils/TubeDETR/__pycache__/
+utils/TubeDETR/util/__pycache__/
+utils/TubeDETR/datasets/__pycache__/
+utils/TubeDETR/models/__pycache__/
+utils/TubeDETR/models/checkpoints/
+weights/
 
