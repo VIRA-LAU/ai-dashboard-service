@@ -3,15 +3,15 @@
 *.mp4
 *.avi
 env/
-datasets/bbox_coord/
-datasets/conatenated/
-datasets/concatenated_with_music/
-datasets/labels/
-datasets/videos_inferred/
-datasets/videos_input/
-datasets/videos_input_frames/
-datasets/videos_inputs_datasets/
-datasets/logs/
+datasets/bbox_coord/*
+datasets/conatenated/*
+datasets/concatenated_with_music/*
+datasets/labels/*
+datasets/videos_inferred/*
+datasets/videos_input/*
+datasets/videos_input_frames/*
+datasets/videos_inputs_datasets/*
+datasets/logs/*
 !datasets/bbox_coord/.gitkeep
 !datasets/conatenated/.gitkeep
 !datasets/concatenated_with_music/.gitkeep
@@ -30,6 +30,6 @@ utils/TubeDETR/util/__pycache__/
 utils/TubeDETR/datasets/__pycache__/
 utils/TubeDETR/models/__pycache__/
 utils/TubeDETR/models/checkpoints/
-weights/
+weights/*
 !weights/.gitkeep
 
