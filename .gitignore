@@ -11,6 +11,16 @@ datasets/videos_inferred/
 datasets/videos_input/
 datasets/videos_input_frames/
 datasets/videos_inputs_datasets/
+datasets/logs/
+!datasets/bbox_coord/.gitkeep
+!datasets/conatenated/.gitkeep
+!datasets/concatenated_with_music/.gitkeep
+!datasets/labels/.gitkeep
+!datasets/videos_inferred/.gitkeep
+!datasets/videos_input/.gitkeep
+!datasets/videos_input_frames/.gitkeep
+!datasets/videos_inputs_datasets/.gitkeep
+!datasets/logs/.gitkeep
 .idea/
 traced_model.pt
 __pycache__
@@ -21,4 +31,5 @@ utils/TubeDETR/datasets/__pycache__/
 utils/TubeDETR/models/__pycache__/
 utils/TubeDETR/models/checkpoints/
 weights/
+!weights/.gitkeep
 

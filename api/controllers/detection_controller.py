@@ -46,6 +46,15 @@ async def fetch_run_inference(path: str) -> ApiResponse:
         "Number of Shots Made": shots_made
     })
 
+@router.get("/Pose_Estimation")
+async def fetch_run_inference(path: str) -> ApiResponse:
+    path_input_video, filename = download_video(video_url_input=path)
+    pose_est = True
+    video_inferred_path = detection_service.run_inference(path_input_video, filename, pose_est)
+    return ApiResponse(success=True, data={
+        "video Inferred": video_inferred_path
+    })
+
 
 #####################################################################################################################################################
 # To be used at a later stage to communicate with the mobile app

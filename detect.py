@@ -2,17 +2,22 @@ import time
 from pathlib import Path
 import sys
 import os
+from multiprocessing import Pool
+from datetime import datetime
 
 import cv2
 import numpy as np
+import pandas as pd
 import torch
 from numpy import random
 
+from torchvision import transforms
+
 from models.experimental import attempt_load
 from sort import Sort
-from utils.datasets import LoadImages
-from utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging, xyxy2xywh
-from utils.plots import plot_one_box
+from utils.datasets import LoadImages,letterbox
+from utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging, xyxy2xywh, non_max_suppression_kpt
+from utils.plots import plot_one_box, output_to_keypoint, plot_skeleton_kpts,colors,plot_one_box_kpt
 from utils.torch_utils import select_device, time_synchronized, TracedModel
 from utils.TubeDETR import stvg
 from persistence.repositories import paths
@@ -62,7 +67,9 @@ def detect(weights: str = 'yolov7.pt',
            augment: bool = False,
            track: bool = True,
            sampling: bool = False,
-           temporal: bool = False) -> tuple:
+           temporal: bool = False,
+           shots: bool = False,
+           pose_est: bool = False) -> tuple:
     """
     Performs inference on an input video
     :param weights: YOLO-V7 .pt file
@@ -77,18 +84,20 @@ def detect(weights: str = 'yolov7.pt',
     :param track: track people in videos
     :return: vid_path, txt_path, frames_shot_made, shotmade
     """
+    time.sleep(5)
     print("weigths: ", weights)
     # print(source)
     ##################################################################################################################################################
     # Parameters
     ##################################################################################################################################################
     '''Variables for counting the shots made'''
-    frames_shot_made: list = []
-    NUMBER_OF_FRAMES_AFTER_SHOT_MADE = 5
-    shotmade = 0
-    history = []
-    for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
-        history.append(False)
+    if (shots):
+        frames_shot_made: list = []
+        NUMBER_OF_FRAMES_AFTER_SHOT_MADE = 5
+        shotmade = 0
+        history = []
+        for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
+            history.append(False)
     
     '''Sampling rate to generate labels'''
     if(sampling):
@@ -96,13 +105,21 @@ def detect(weights: str = 'yolov7.pt',
     
     save_img = not dont_save and not source.endswith('.txt')  # save inference images
 
+    weights_name = weights.split('/')[1] 
+
     '''Directories'''
-    save_dir = paths.video_inferred_path
-    save_txt = paths.bbox_coordinates_path
-    save_label = paths.labels_path
+    save_dir = paths.video_inferred_path / weights_name
+    save_txt = paths.bbox_coordinates_path / weights_name
+    save_label = paths.labels_path / weights_name
     save_dir.mkdir(parents=True, exist_ok=True)  # create directory
     save_txt.mkdir(parents=True, exist_ok=True)  # create directory
     save_label.mkdir(parents=True, exist_ok=True)  # create directory
+
+    '''Logs'''
+    data = {'timestamp': [],
+        'video': [],
+        'labels': []}
+    df_log = pd.DataFrame(data)
 
     '''Temporal Analysis'''
     if(temporal):
@@ -123,7 +140,8 @@ def detect(weights: str = 'yolov7.pt',
     model = attempt_load(weights, map_location=device)  # load FP32 model
     stride = int(model.stride.max())  # model stride
     imgsz = check_img_size(img_size, s=stride)  # check img_size
-    model = TracedModel(model, device, img_size)
+    if (not pose_est):
+        model = TracedModel(model, device, img_size)
     if half:
         model.half()  # to FP16
 
@@ -159,135 +177,223 @@ def detect(weights: str = 'yolov7.pt',
                 model(img, augment=augment)[0]
 
         '''Inference'''
-        t1 = time_synchronized()
-        pred = model(img, augment=augment)[0]
-        t2 = time_synchronized()
+        if(pose_est):
+            t1 = time_synchronized()
+            pred = model(img, augment=augment)[0]
+            t2 = time_synchronized()
 
-        '''Apply NMS'''
-        pred = non_max_suppression(pred, conf_thresh, iou_thresh)
-        t3 = time_synchronized()
+            pred = non_max_suppression_kpt(pred, 0.25, 0.65, nc=model.yaml['nc'], nkpt=model.yaml['nkpt'], kpt_label=True)
+            t3 = time_synchronized()
+            
+            output = output_to_keypoint(pred)
 
+        else:                      
+            t1 = time_synchronized()
+            pred = model(img, augment=augment)[0]
+            t2 = time_synchronized()
+
+            '''Apply NMS'''
+            pred = non_max_suppression(pred, conf_thresh, iou_thresh)
+            t3 = time_synchronized()
+
+        count = 0
         '''Process detections'''
         for i, det in enumerate(pred):  # detections per image
-            p, s, im0, frame = path, '', im0s, getattr(dataset, 'frame', 0)
+                p, s, im0, frame = path, '', im0s, getattr(dataset, 'frame', 0)
 
-            p = Path(p)  # to Path
-            filename = (p.name.replace(" ", "_"))
-            save_label_video = Path(save_label / (filename.split('.')[0]))
-            save_label_video.mkdir(parents=True, exist_ok=True)  # make dir
-            label_per_frame = str(save_label_video / (str(frame) + '.txt'))
-            save_path = str(save_dir / (filename.split('.')[0] + "-out" + ".mp4"))  # img.jpg
-            txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
-            #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
-            cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
+                p = Path(p)  # to Path
+                filename = (p.name.replace(" ", "_"))
+                save_label_video = Path(save_label / (filename.split('.')[0]))
+                save_label_video.mkdir(parents=True, exist_ok=True)  # make dir
+                label_per_frame = str(save_label_video / (str(frame) + '.txt'))
+                save_path = str(save_dir / (filename.split('.')[0] + "-out" + ".mp4"))  # img.jpg
+                txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
+                #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
+                cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
 
-            gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
-            dets_to_sort = np.empty((0, 6))
-            if len(det):
-                '''Rescale boxes from img_size to im0 size'''
-                det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
-
-                '''Print results'''
-                for c in det[:, -1].unique():
-                    n = (det[:, -1] == c).sum()  # detections per class
-                    s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
-
-                '''Write results'''
-                for *xyxy, conf, cls in reversed(det):
-                    xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                    xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
-                    xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
-                    line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
-                    with open(txt_path, 'a') as f:
-                        f.write(('\t'.join(line)) + '\n')
-                    label = [str(int(cls)), xywh_label]
-                    #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
-                    with open(label_per_frame, 'a') as f:
-                        f.write((' '.join(label)) + '\n')
-                    cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
-                    if names[int(cls)] == "madebasketball":
-                        if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
-                            history.append(False)
-                        else:
-                            shotmade += 1
-                            frames_shot_made.append(frame)
-                            history.append(True)
-
-                    if save_img or view_img:  # Add bbox to image
-                        label = f'{names[int(cls)]} {conf:.2f}'
-                        plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1)
-
+                gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
                 dets_to_sort = np.empty((0, 6))
-                # NOTE: We send in detected object class too
-                for x1, y1, x2, y2, conf, detclass in det.cpu().detach().numpy():
-                    if detclass == 0.0:
-                        dets_to_sort = np.vstack((dets_to_sort, np.array([x1, y1, x2, y2, conf, detclass])))
+                if len(det):
+                    '''Rescale boxes from img_size to im0 size'''
+                    det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False).round()
+                    if (pose_est):
+                        det[:, 6:] = scale_coords(img.shape[2:], det[:, 6:], im0.shape, kpt_label=True, step=3)
 
-            '''Perform Tracking'''
-            if track:
-                tracked_dets = sort_tracker.update(dets_to_sort)
-                tracks = sort_tracker.getTrackers()
+                    '''Print results'''
+                    for c in det[:, -1].unique():
+                        n = (det[:, -1] == c).sum()  # detections per class
+                        s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
-                # draw boxes for visualization
-                if len(tracked_dets) > 0:
-                    bbox_xyxy = tracked_dets[:, :4]
-                    identities = tracked_dets[:, 8]
-                    categories = tracked_dets[:, 4]
-                    confidences = None
+                    '''Write results'''
+                    if (pose_est):
+                        for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
+                            xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()
+                            line = (cls, *xywh, conf)
+                            label =  f'{names[int(cls)]} {conf:.2f}'
+                            with open(txt_path, 'a') as f:
+                                f.write(('%g ' * len(line)).rstrip() % line + '\n')
 
-                    '''loop over tracks'''
-                    for t, track in enumerate(tracks):
-                        track_color = colors[int(track.detclass)]
+                            label = [str(int(cls)), label]
+                            with open(label_per_frame, 'a') as f:
+                                f.write((' '.join(label)) + '\n')
+                                # f.write(('%g ' * len(label)).rstrip() % label + '\n')  
 
-                        [cv2.line(im0, (int(track.centroidarr[i][0]),
-                                        int(track.centroidarr[i][1])),
-                                  (int(track.centroidarr[i + 1][0]),
-                                   int(track.centroidarr[i + 1][1])),
-                                  track_color, thickness=round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1)
-                         for i, _ in enumerate(track.centroidarr)
-                         if i < len(track.centroidarr) - 1]
-                else:
-                    bbox_xyxy = dets_to_sort[:, :4]
-                    identities = None
-                    categories = dets_to_sort[:, 5]
-                    confidences = dets_to_sort[:, 4]
-                im0 = draw_boxes(im0, bbox_xyxy, identities, categories, confidences, names, colors)
+                            if save_img or view_img:
+                                label =  f'{names[int(cls)]} {conf:.2f}'
+                                output = output_to_keypoint(pred)
+                                kpts = det[det_index, 6:]
+                                print(output[det_index, 7:].T[-2]) # foot kpt
+                                print(output[det_index, 7:].T[-3]) # foot kpt
+                                plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], 
+                                             line_thickness=3, kpt_label=True, kpts=kpts, steps=3, orig_shape=im0.shape[:2])
+                                data = {'timestamp': datetime.now(),
+                                    'video': filename.split('.')[0],
+                                    'labels': label,
+                                    'kpt_foot1' : output[det_index, 7:].T[-2],
+                                    'kpt_foot2' : output[det_index, 7:].T[-3]}
+                                
+                                df_log = df_log.append(data, ignore_index = True)
 
-            '''Print inference and NMS time'''
-            print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
+                    else:
+                        for *xyxy, conf, cls in reversed(det):
+                            xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
+                            xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
+                            xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
+                            line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
+                            with open(txt_path, 'a') as f:
+                                f.write(('\t'.join(line)) + '\n')
+                            label = [str(int(cls)), xywh_label]
+                            #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
+                            with open(label_per_frame, 'a') as f:
+                                f.write((' '.join(label)) + '\n')
+                    
+                            if (shots):
+                                cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
+                                if names[int(cls)] == "netbasketball":
+                                    if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
+                                        history.append(False)
+                                    else:
+                                        shotmade += 1
+                                        frames_shot_made.append(frame)
+                                        history.append(True)
+                                
+                            if save_img or view_img:  # Add bbox to image
+                                label = f'{names[int(cls)]} {conf:.2f}'
+                                plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1, kpt_label=False)
 
-            '''Stream results'''
-            if view_img:
-                cv2.imshow(str(p), im0)
-                cv2.waitKey(1)  # 1 millisecond
+                                data = {'timestamp': datetime.now(),
+                                    'video': filename.split('.')[0],
+                                    'labels': label,
+                                    'bbox_coord' : xywh}
+                                
+                                df_log = df_log.append(data, ignore_index = True)
 
-            '''Save results (video with detections)'''
-            if save_img:
-                if vid_path != save_path:  # new video
-                    vid_path = save_path
-                    if isinstance(vid_writer, cv2.VideoWriter):
-                        vid_writer.release()  # release previous video writer
-                    if vid_cap:  # video
-                        fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                        w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                        h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                    else:  # stream
-                        fps, w, h = 30, im0.shape[1], im0.shape[0]
-                        save_path += '.mp4'
-                    vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-                vid_writer.write(im0)
+                        dets_to_sort = np.empty((0, 6))
+                        # NOTE: We send in detected object class too
+                        for x1, y1, x2, y2, conf, detclass in det.cpu().detach().numpy():
+                            if detclass == 0.0:
+                                dets_to_sort = np.vstack((dets_to_sort, np.array([x1, y1, x2, y2, conf, detclass])))
+
+                    count+=1
+
+                if (not pose_est):
+                    '''Perform Tracking'''
+                    if track:
+                        tracked_dets = sort_tracker.update(dets_to_sort)
+                        tracks = sort_tracker.getTrackers()
+
+                        # draw boxes for visualization
+                        if len(tracked_dets) > 0:
+                            bbox_xyxy = tracked_dets[:, :4]
+                            identities = tracked_dets[:, 8]
+                            categories = tracked_dets[:, 4]
+                            confidences = None
+
+                            '''loop over tracks'''
+                            for t, track in enumerate(tracks):
+                                track_color = colors[int(track.detclass)]
+
+                                [cv2.line(im0, (int(track.centroidarr[i][0]),
+                                                int(track.centroidarr[i][1])),
+                                        (int(track.centroidarr[i + 1][0]),
+                                        int(track.centroidarr[i + 1][1])),
+                                        track_color, thickness=round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1)
+                                for i, _ in enumerate(track.centroidarr)
+                                if i < len(track.centroidarr) - 1]
+                        else:
+                            bbox_xyxy = dets_to_sort[:, :4]
+                            identities = None
+                            categories = dets_to_sort[:, 5]
+                            confidences = dets_to_sort[:, 4]
+                        im0 = draw_boxes(im0, bbox_xyxy, identities, categories, confidences, names, colors)
+
+                '''Print inference and NMS time'''
+                print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
+
+                '''Stream results'''
+                if view_img:
+                    cv2.imshow(str(p), im0)
+                    cv2.waitKey(1)  # 1 millisecond
+
+                '''Save results (video with detections)'''
+                if save_img:
+                    if vid_path != save_path:  # new video
+                        vid_path = save_path
+                        if isinstance(vid_writer, cv2.VideoWriter):
+                            vid_writer.release()  # release previous video writer
+                        if vid_cap:  # video
+                            fps = vid_cap.get(cv2.CAP_PROP_FPS)
+                            w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                            h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        else:  # stream
+                            fps, w, h = 30, im0.shape[1], im0.shape[0]
+                            save_path += '.mp4'
+                        vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+                    vid_writer.write(im0)
+                    # df_log = df_log.set_index(df_log['timestamp'])
+                    # df_log = df_log.drop(columns='timestamp')
+                    df_log.to_csv("datasets/logs/" + filename.split('.')[0] + "_logs.csv")
 
     print(f'Done. ({time.time() - t0:.3f}s)')
-    print(f'Total Made Shots: {shotmade}')
-    return vid_path, txt_path, frames_shot_made, shotmade
+    
+    if (shots):
+        print(f'Total Made Shots: {shotmade}')
+        return vid_path, txt_path, frames_shot_made, shotmade
+    else:
+        return vid_path, txt_path
+        
 
-
-if __name__ == '__main__':
-    weights = 'weights/best_180323_init.pt'
-    source = 'datasets/videos_input/init_second_vid/'
+def run_detect(data):
+    weights = data[0]
+    source = data[1]
+    shots = data[2]
+    pose_est = data[3]
     for vid in os.listdir(source):
         with torch.no_grad():
-            video_path = detect(weights=weights, source=source + str(vid))
+            video_path = detect(weights=weights, source=source + str(vid), shots=shots, pose_est=pose_est)
             strip_optimizer(weights)
         print(video_path)
         torch.cuda.empty_cache()
+
+if __name__ == '__main__':
+    weights = ['weights/best_180323_init.pt','weights/yolov7-w6-pose.pt','weights/amir_model_4.pt']
+    source = 'datasets/videos_input/'
+    
+    for vid in os.listdir(source):
+        with torch.no_grad():
+            video_path = detect(weights='weights/yolov7-w6-pose.pt', source=source + str(vid), shots=False, pose_est=True)
+            strip_optimizer(weights)
+        print(video_path)
+        torch.cuda.empty_cache()
+    
+    '''For parallel processing:
+
+    data = [[weights[0],source,True,False],[
+        weights[1],source,False,True],
+        [weights[2],source,True,False]]
+
+    pool = Pool(processes=len(data))
+    # run_detect(data)
+    pool.map(run_detect, data)
+
+    '''
