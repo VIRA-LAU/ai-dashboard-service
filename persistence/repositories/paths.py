@@ -13,3 +13,4 @@ concatenated_path = Path(parse_json(paths_file)["concatenated_path"])
 song_path = parse_json(paths_file)["song_path"]
 concatenated_with_music = Path(parse_json(paths_file)["concatenated_with_music"])
 labels_path = Path(parse_json(paths_file)["label_path"])
+logs_path = Path(parse_json(paths_file)["logs_path"])

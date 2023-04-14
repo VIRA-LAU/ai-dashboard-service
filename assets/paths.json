@@ -7,5 +7,6 @@
   "concatenated_path": "datasets/concatenated/",
   "song_path": "assets/music/song.mp3",
   "concatenated_with_music": "datasets/concatenated_with_music",
-  "label_path": "datasets/labels/"
+  "label_path": "datasets/labels/",
+  "logs_path" : "datasets/logs/"
 }

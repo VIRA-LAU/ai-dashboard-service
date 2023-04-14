@@ -56,6 +56,34 @@ def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, na
     return img
 
 
+def get_stats(weights: str = [],
+              source: str = 'vid'):
+    
+    basket_logs = paths.logs_path / weights[0].split('/')[1] 
+    pose_logs = paths.logs_path / weights[1].split('/')[1] 
+    actions_logs = paths.logs_path / weights[2].split('/')[1]
+
+    df_basket_logs = pd.read_csv(str(basket_logs) + "/" + str(source.split('.')[0]) + "_logs.csv") 
+    df_pose_logs = pd.read_csv(str(pose_logs) + "/" + str(source.split('.')[0]) + "_logs.csv") 
+    df_actions_logs = pd.read_csv(str(actions_logs) + "/" + str(source.split('.')[0]) + "_logs.csv") 
+
+    df_shooting = df_actions_logs.loc[df_actions_logs['labels']=='shooting']
+    df_points = df_pose_logs.loc[df_shooting['frame']]
+
+    '''
+    Compare dates against a margin
+    remove all occurances inside this margin
+    continue for the new margin
+    1 occurance for each margin
+    '''
+
+    # df_shooting.to_csv("datasets/logs/" + str(weights[2].split('/')[1]) + "/" + str(source.split('.')[0]) + "_logs.csv")
+
+    print(df_points)
+
+    return
+
+
 def detect(weights: str = 'yolov7.pt',
            source: str = 'inference/images',
            img_size: int = 640,
@@ -111,15 +139,14 @@ def detect(weights: str = 'yolov7.pt',
     save_dir = paths.video_inferred_path / weights_name
     save_txt = paths.bbox_coordinates_path / weights_name
     save_label = paths.labels_path / weights_name
+    save_logs = paths.logs_path / weights_name
     save_dir.mkdir(parents=True, exist_ok=True)  # create directory
     save_txt.mkdir(parents=True, exist_ok=True)  # create directory
     save_label.mkdir(parents=True, exist_ok=True)  # create directory
+    save_logs.mkdir(parents=True, exist_ok=True)  # create directory
 
     '''Logs'''
-    data = {'timestamp': [],
-        'video': [],
-        'labels': []}
-    df_log = pd.DataFrame(data)
+    df_log = pd.DataFrame(columns=['timestamp', 'frame', 'video', 'labels'])
 
     '''Temporal Analysis'''
     if(temporal):
@@ -196,7 +223,13 @@ def detect(weights: str = 'yolov7.pt',
             pred = non_max_suppression(pred, conf_thresh, iou_thresh)
             t3 = time_synchronized()
 
-        count = 0
+        '''Dummy Equation of Arc'''
+        arcUp = [-0.0105011, 0.0977268, -0.308306, 0.315377, -0.229249, 2.11325]
+        arcDown = [0.000527976, 0.00386626, 0.0291599, 0.121282, -2.22398]
+
+        polyUp = np.poly1d(arcUp)
+        polyDown = np.poly1d(arcDown)
+
         '''Process detections'''
         for i, det in enumerate(pred):  # detections per image
                 p, s, im0, frame = path, '', im0s, getattr(dataset, 'frame', 0)
@@ -216,7 +249,8 @@ def detect(weights: str = 'yolov7.pt',
                 if len(det):
                     '''Rescale boxes from img_size to im0 size'''
                     det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False).round()
-                    if (pose_est):
+                    if (pose_est): # Rescale keypoints to original image size
+                        det_norm = det[:, 6:]
                         det[:, 6:] = scale_coords(img.shape[2:], det[:, 6:], im0.shape, kpt_label=True, step=3)
 
                     '''Print results'''
@@ -224,35 +258,81 @@ def detect(weights: str = 'yolov7.pt',
                         n = (det[:, -1] == c).sum()  # detections per class
                         s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
-                    '''Write results'''
+                    '''Write results
+
+                            pose_est: get bounding boxes and keypoints
+                                    keypoints: det[:, 6:]
+
+                            not pose_est: get bounding boxes
+
+                            bounding box: xyxy (x1 y1 x2 y2)
+                                    convert xyxy --> xywh : x1 y1 width height
+                    '''
                     if (pose_est):
                         for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
-                            xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()
-                            line = (cls, *xywh, conf)
-                            label =  f'{names[int(cls)]} {conf:.2f}'
-                            with open(txt_path, 'a') as f:
-                                f.write(('%g ' * len(line)).rstrip() % line + '\n')
+                            xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
+                            xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
+                            xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
+                            line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
 
-                            label = [str(int(cls)), label]
+                            # kpts_norm = det_norm[det_index, 6:]
+                            kpts = det[det_index, 6:]
+                            with open(txt_path, 'a') as f:
+                                f.write(('\t'.join(line)) + '\n')
+
+                            label = [str(int(cls)), xywh_label]
                             with open(label_per_frame, 'a') as f:
-                                f.write((' '.join(label)) + '\n')
-                                # f.write(('%g ' * len(label)).rstrip() % label + '\n')  
+                                f.write((' '.join(label)) + '\n') 
 
                             if save_img or view_img:
                                 label =  f'{names[int(cls)]} {conf:.2f}'
                                 output = output_to_keypoint(pred)
-                                kpts = det[det_index, 6:]
-                                print(output[det_index, 7:].T[-2]) # foot kpt
-                                print(output[det_index, 7:].T[-3]) # foot kpt
+                                
+                                # print(output[det_index, 7:].T[-2]) # foot kpt Y Coord
+                                # print(output[det_index, 7:].T[-3]) # foot kpt X Coord
                                 plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], 
                                              line_thickness=3, kpt_label=True, kpts=kpts, steps=3, orig_shape=im0.shape[:2])
-                                data = {'timestamp': datetime.now(),
-                                    'video': filename.split('.')[0],
-                                    'labels': label,
-                                    'kpt_foot1' : output[det_index, 7:].T[-2],
-                                    'kpt_foot2' : output[det_index, 7:].T[-3]}
-                                
-                                df_log = df_log.append(data, ignore_index = True)
+                            
+                            xy=[]
+                            steps=3
+                            num_kpts = len(kpts) // steps
+
+                            for kid in range(num_kpts):
+                                x_coord, y_coord = kpts[steps * kid], kpts[steps * kid + 1]
+                                if not (x_coord % 640 == 0 or y_coord % 640 == 0):
+                                    xy.append([int(x_coord), int(y_coord)])
+
+                            # ratio set according to scale of axis
+                            ratio_x = (image.shape[1])/20 
+                            ratio_y = (image.shape[0])/5.8
+
+                            x_center = (image.shape[1]/2)/ratio_x   # width
+                            y_center = (image.shape[0]/2)/ratio_y   # height
+
+                            x_new = (xy[-1][0])/ratio_x - x_center
+                            y_new = (xy[-1][1])/ratio_y - y_center
+
+                            yUp = polyUp(x_new)
+                            yDown = polyDown(x_new)
+
+                            position=""
+                            if yUp > y_new and yDown < y_new:
+                                position = "2_points"
+                            else:
+                                position = "3_points"
+
+
+                            label = names[int(cls)]
+                            data = { 'timestamp' : datetime.now(),
+                                'frame': str(frame),
+                                'video': filename.split('.')[0],
+                                'labels': label,
+                                'person' : "ID",
+                                'feet_coord' : xy[-1],
+                                'position' : position
+                                }
+                            
+                            df_log = df_log.append(data, ignore_index = True)
 
                     else:
                         for *xyxy, conf, cls in reversed(det):
@@ -269,7 +349,7 @@ def detect(weights: str = 'yolov7.pt',
                     
                             if (shots):
                                 cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
-                                if names[int(cls)] == "netbasketball":
+                                if names[int(cls)] == "netbasket":
                                     if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
                                         history.append(False)
                                     else:
@@ -278,23 +358,33 @@ def detect(weights: str = 'yolov7.pt',
                                         history.append(True)
                                 
                             if save_img or view_img:  # Add bbox to image
-                                label = f'{names[int(cls)]} {conf:.2f}'
+                                label = names[int(cls)]
+                                print(label)
                                 plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1, kpt_label=False)
 
-                                data = {'timestamp': datetime.now(),
-                                    'video': filename.split('.')[0],
-                                    'labels': label,
-                                    'bbox_coord' : xywh}
-                                
-                                df_log = df_log.append(data, ignore_index = True)
+                            label = names[int(cls)]
+                            data = {'timestamp' : datetime.now(),
+                                'frame': str(frame),
+                                'video': filename.split('.')[0],
+                                'labels': label,
+                                'bbox_coord' : xywh}
+                            
+                            df_log = df_log.append(data, ignore_index = True)
 
                         dets_to_sort = np.empty((0, 6))
                         # NOTE: We send in detected object class too
                         for x1, y1, x2, y2, conf, detclass in det.cpu().detach().numpy():
                             if detclass == 0.0:
                                 dets_to_sort = np.vstack((dets_to_sort, np.array([x1, y1, x2, y2, conf, detclass])))
-
-                    count+=1
+                
+                # Add frame with no detections in logs
+                else:
+                    data = {'timestamp' : datetime.now(),
+                        'frame': str(frame),
+                        'video': filename.split('.')[0],
+                        'labels': ''}
+                    
+                    df_log = df_log.append(data, ignore_index = True)
 
                 if (not pose_est):
                     '''Perform Tracking'''
@@ -350,9 +440,8 @@ def detect(weights: str = 'yolov7.pt',
                             save_path += '.mp4'
                         vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                     vid_writer.write(im0)
-                    # df_log = df_log.set_index(df_log['timestamp'])
-                    # df_log = df_log.drop(columns='timestamp')
-                    df_log.to_csv("datasets/logs/" + filename.split('.')[0] + "_logs.csv")
+
+                    df_log.to_csv("datasets/logs/" + weights_name + "/" + filename.split('.')[0] + "_logs.csv")
 
     print(f'Done. ({time.time() - t0:.3f}s)')
     
@@ -376,24 +465,29 @@ def run_detect(data):
         torch.cuda.empty_cache()
 
 if __name__ == '__main__':
-    weights = ['weights/best_180323_init.pt','weights/yolov7-w6-pose.pt','weights/amir_model_4.pt']
+    weights = ['weights/net_hoop_basket_2.pt','weights/yolov7-w6-pose.pt', 'weights/actions_1.pt']
     source = 'datasets/videos_input/'
     
     for vid in os.listdir(source):
         with torch.no_grad():
-            video_path = detect(weights='weights/yolov7-w6-pose.pt', source=source + str(vid), shots=False, pose_est=True)
-            strip_optimizer(weights)
+            video_path = detect(weights='weights/actions_1.pt', source=source + str(vid), shots=False, pose_est=False)
+            # strip_optimizer(weights)
         print(video_path)
         torch.cuda.empty_cache()
+
+    '''Get stats after processing'''
+    # for vid in os.listdir(source):
+    #     get_stats(weights=weights, source=str(vid))
+        
+
+    '''For parallel processing: '''
+
+    # data = [[weights[0],source,True,False],[
+    #     weights[1],source,False,True],
+    #     [weights[2],source,False,False]]
+
+    # pool = Pool(3)
+    # # run_detect(data)
+    # pool.map(run_detect, data)
+
     
-    '''For parallel processing:
-
-    data = [[weights[0],source,True,False],[
-        weights[1],source,False,True],
-        [weights[2],source,True,False]]
-
-    pool = Pool(processes=len(data))
-    # run_detect(data)
-    pool.map(run_detect, data)
-
-    '''
