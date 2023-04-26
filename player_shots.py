@@ -1,27 +1,29 @@
 import pandas as pd
 import numpy as np
-map = {}
 
-actions = None
-baskets = None
-frames = []
+global actions, baskets, frames
 
-NUMBER_OF_FRAMES_AFTER_SHOOTING = 90
-NUMBER_OF_FRAMES_FOR_NETBASKET = 120
-PLAYER_CONFIDENCE_LEVEL = 0.92
+def getPointsPerPlayer(currentFrame : int, fileName : str, 
+                       frames: int = [], map = {}, shooting_frames: int = 90, netbasket_frames: int = 120, conf: float = 0.92,
+                       actions = None, baskets = None):
+    map = {}
 
+    actions = None
+    baskets = None
 
-def getPointsPerPlayer(currentFrame : int, fileName : str):
-    global actions, baskets, frames
+    NUMBER_OF_FRAMES_AFTER_SHOOTING = shooting_frames
+    NUMBER_OF_FRAMES_FOR_NETBASKET = netbasket_frames
+    PLAYER_CONFIDENCE_LEVEL = conf
+    
     if actions is None and baskets is None and len(frames) == 0:
-        actions = pd.read_csv(f'datasets/logs/actions_2.pt/{fileName}_logs.csv')
-        baskets = pd.read_csv(f'datasets/logs/net_hoop_basket_5.pt/{fileName}_logs.csv')
+        actions = pd.read_csv(f'datasets/logs/actions_2.pt/{fileName}_actions_logs.csv')
+        baskets = pd.read_csv(f'datasets/logs/net_hoop_basket_5.pt/{fileName}_nethoopbasket_logs.csv')
         for idx, row in baskets.loc[baskets['labels'] == 'netbasket'].iterrows():
             if len(frames) == 0:
                 frames.append(row['frame'])
             elif row['frame'] - frames[-1] > NUMBER_OF_FRAMES_FOR_NETBASKET:
                 frames.append(row['frame'])
-    player = pd.read_csv(f'datasets/logs/yolov7-w6-pose.pt/{fileName}_logs.csv')
+    player = pd.read_csv(f'datasets/logs/yolov7-w6-pose.pt/{fileName}_pose_logs.csv')
     print(frames)
 
     for frame_num in frames:

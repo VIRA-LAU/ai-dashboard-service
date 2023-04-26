@@ -20,7 +20,7 @@ from models.experimental import attempt_load
 from sort import Sort
 from utils.datasets import LoadImages,letterbox
 from utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging, xyxy2xywh, non_max_suppression_kpt
-from utils.plots import plot_one_box, output_to_keypoint, plot_skeleton_kpts,colors,plot_one_box_kpt
+from utils.plots import plot_one_box, output_to_keypoint, plot_skeleton_kpts, colors, plot_one_box_kpt, plot_kpts
 from utils.torch_utils import select_device, time_synchronized, TracedModel
 from utils.TubeDETR import stvg
 from persistence.repositories import paths
@@ -59,7 +59,7 @@ def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, na
             numPoints = points[id]
         print(numPoints)
         label = str(id) + ": " + f'{numPoints} Points'
-        #label = str(id) + ":" + names[cat] if identities is not None else f'{names[cat]} {confidences[i]:.2f}'
+        # label = str(id) + ":" + names[cat] if identities is not None else f'{names[cat]} {confidences[i]:.2f}'
         print(label)
         tf = max(tl - 1, 1)  # font thickness
         t_size = cv2.getTextSize(label, 0, fontScale=tl / 3, thickness=tf)[0]
@@ -67,34 +67,6 @@ def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, na
         cv2.rectangle(img, (x1, y1), c2, color, -1, cv2.LINE_AA)  # filled
         cv2.putText(img, label, (x1, y1 - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
     return img
-
-
-def get_stats(weights: str = [],
-              source: str = 'vid'):
-    
-    basket_logs = paths.logs_path / weights[0].split('/')[1] 
-    pose_logs = paths.logs_path / weights[1].split('/')[1] 
-    actions_logs = paths.logs_path / weights[2].split('/')[1]
-
-    df_basket_logs = pd.read_csv(str(basket_logs) + "/" + str(source.split('.')[0]) + "_logs.csv") 
-    df_pose_logs = pd.read_csv(str(pose_logs) + "/" + str(source.split('.')[0]) + "_logs.csv") 
-    df_actions_logs = pd.read_csv(str(actions_logs) + "/" + str(source.split('.')[0]) + "_logs.csv") 
-
-    df_shooting = df_actions_logs.loc[df_actions_logs['labels']=='shooting']
-    df_points = df_pose_logs.loc[df_shooting['frame']]
-
-    '''
-    Compare dates against a margin
-    remove all occurances inside this margin
-    continue for the new margin
-    1 occurance for each margin
-    '''
-
-    # df_shooting.to_csv("datasets/logs/" + str(weights[2].split('/')[1]) + "/" + str(source.split('.')[0]) + "_logs.csv")
-
-    print(df_points)
-
-    return
 
 
 def detect_pose(weights: str = 'yolov7.pt',
@@ -108,9 +80,7 @@ def detect_pose(weights: str = 'yolov7.pt',
            augment: bool = False,
            track: bool = True,
            sampling: bool = False,
-           temporal: bool = False,
-           shots: bool = False,
-           pose_est: bool = False) -> tuple:
+           temporal: bool = False) -> tuple:
     """
     Performs inference on an input video
     :param weights: YOLO-V7 .pt file
@@ -123,7 +93,7 @@ def detect_pose(weights: str = 'yolov7.pt',
     :param dont_save: save inferred frames
     :param augment: augment frames
     :param track: track people in videos
-    :return: vid_path, txt_path, frames_shot_made, shotmade
+    :return: vid_path, txt_path
     """
     time.sleep(5)
     print("weigths: ", weights)
@@ -151,7 +121,7 @@ def detect_pose(weights: str = 'yolov7.pt',
     save_logs.mkdir(parents=True, exist_ok=True)  # create directory
 
     '''Logs'''
-    df_log = pd.DataFrame(columns=['timestamp', 'frame', 'video', 'labels'])
+    df_log = pd.DataFrame(columns=['timestamp', 'frame', 'video', 'labels', 'feet_coord', 'player_coordinates', 'position', 'playerId'])
 
     '''Temporal Analysis'''
     if(temporal):
@@ -231,7 +201,7 @@ def detect_pose(weights: str = 'yolov7.pt',
                 save_label_video = Path(save_label / (filename.split('.')[0]))
                 save_label_video.mkdir(parents=True, exist_ok=True)  # make dir
                 label_per_frame = str(save_label_video / (str(frame) + '.txt'))
-                save_path = str(save_dir / (filename.split('.')[0] + "-out" + ".mp4"))  # img.jpg
+                save_path = str(save_dir / (filename.split('.')[0] + "_pose_out" + ".mp4"))  # img.jpg
                 txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
                 #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
                 cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
@@ -242,7 +212,6 @@ def detect_pose(weights: str = 'yolov7.pt',
                     '''Rescale boxes from img_size to im0 size'''
                     det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False).round()
                     # Rescale keypoints to original image size
-                    det_norm = det[:, 6:]
                     det[:, 6:] = scale_coords(img.shape[2:], det[:, 6:], im0.shape, kpt_label=True, step=3)
 
                     '''Print results'''
@@ -251,10 +220,8 @@ def detect_pose(weights: str = 'yolov7.pt',
                         s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
                     '''Write results
-                            pose_est: get bounding boxes and keypoints
+                            get bounding boxes and keypoints
                                     keypoints: det[:, 6:]
-
-                            not pose_est: get bounding boxes
 
                             bounding box: xyxy (x1 y1 x2 y2)
                                     convert xyxy --> xywh : x1 y1 width height
@@ -266,7 +233,6 @@ def detect_pose(weights: str = 'yolov7.pt',
                         xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
                         line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
 
-                        # kpts_norm = det_norm[det_index, 6:]
                         kpts = det[det_index, 6:]
                         with open(txt_path, 'a') as f:
                             f.write(('\t'.join(line)) + '\n')
@@ -276,10 +242,9 @@ def detect_pose(weights: str = 'yolov7.pt',
                             f.write((' '.join(label)) + '\n') 
 
                         label = names[int(cls)]
-                        output = output_to_keypoint(pred)
                             
-                            # print(output[det_index, 7:].T[-2]) # foot kpt Y Coord
-                            # print(output[det_index, 7:].T[-3]) # foot kpt X Coord
+                        # print(output[det_index, 7:].T[-2]) # foot kpt Y Coord
+                        # print(output[det_index, 7:].T[-3]) # foot kpt X Coord
                         
                         xy=[]
                         steps=3
@@ -309,8 +274,7 @@ def detect_pose(weights: str = 'yolov7.pt',
                         else:
                             position = "3_points"
 
-                        #plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], 
-                                        #line_thickness=3, kpt_label=True, kpts=kpts, steps=3, orig_shape=im0.shape[:2])
+                        plot_kpts(im0, kpts=kpts, steps=3, orig_shape=im0.shape[:2])
 
                     # NOTE: We send in detected object class too
                     for element in det.cpu().detach().numpy():
@@ -336,9 +300,10 @@ def detect_pose(weights: str = 'yolov7.pt',
                                         'feet_coord' : xy[-1],
                                         'player_coordinates' : [entry[0] , entry[1], entry[2], entry[3]],
                                         'position' : position,
-                                        'playerId' : entry[-1]
-                                        }
+                                        'playerId' : entry[-1] }
+
                                 df_log = df_log.append(data, ignore_index = True)
+
                             '''loop over tracks'''
                             for t, track in enumerate(tracks):
                                 track_color = colors[int(track.detclass)]
@@ -358,7 +323,7 @@ def detect_pose(weights: str = 'yolov7.pt',
                         points = {}
 
                         if frame > 1:
-                            points = getPointsPerPlayer(frame-1, filename.split('.')[0])
+                            points = getPointsPerPlayer(frame-1, filename.split('.')[0], shooting_frames = 90, netbasket_frames = 120, conf = 0.92)
                         im0 = draw_boxes(im0, bbox_xyxy, identities, categories, confidences, names, colors, points)
 
                 # Add frame with no detections in logs
@@ -366,7 +331,11 @@ def detect_pose(weights: str = 'yolov7.pt',
                     data = {'timestamp' : datetime.now(),
                         'frame': str(frame),
                         'video': filename.split('.')[0],
-                        'labels': ''}
+                        'labels': '',
+                        'feet_coord' : '',
+                        'player_coordinates' : '',
+                        'position' : '',
+                        'playerId' : '' }
                     
                     df_log = df_log.append(data, ignore_index = True)
 
@@ -410,9 +379,7 @@ def detect_basketball(weights: str = 'yolov7.pt',
            augment: bool = False,
            track: bool = True,
            sampling: bool = False,
-           temporal: bool = False,
-           shots: bool = False,
-           pose_est: bool = False) -> tuple:
+           temporal: bool = False) -> tuple:
     """
     Performs inference on an input video
     :param weights: YOLO-V7 .pt file
@@ -434,13 +401,12 @@ def detect_basketball(weights: str = 'yolov7.pt',
     # Parameters
     ##################################################################################################################################################
     '''Variables for counting the shots made'''
-    if (shots):
-        frames_shot_made: list = []
-        NUMBER_OF_FRAMES_AFTER_SHOT_MADE = 5
-        shotmade = 0
-        history = []
-        for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
-            history.append(False)
+    frames_shot_made: list = []
+    NUMBER_OF_FRAMES_AFTER_SHOT_MADE = 5
+    shotmade = 0
+    history = []
+    for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
+        history.append(False)
     
     '''Sampling rate to generate labels'''
     if(sampling):
@@ -482,8 +448,7 @@ def detect_basketball(weights: str = 'yolov7.pt',
     model = attempt_load(weights, map_location=device)  # load FP32 model
     stride = int(model.stride.max())  # model stride
     imgsz = check_img_size(img_size, s=stride)  # check img_size
-    if (not pose_est):
-        model = TracedModel(model, device, img_size)
+    model = TracedModel(model, device, img_size)
     if half:
         model.half()  # to FP16
 
@@ -517,25 +482,14 @@ def detect_basketball(weights: str = 'yolov7.pt',
             old_img_w = img.shape[3]
             for _ in range(3):
                 model(img, augment=augment)[0]
+                  
+        t1 = time_synchronized()
+        pred = model(img, augment=augment)[0]
+        t2 = time_synchronized()
 
-        '''Inference'''
-        if(pose_est):
-            t1 = time_synchronized()
-            pred = model(img, augment=augment)[0]
-            t2 = time_synchronized()
-            pred = non_max_suppression_kpt(pred, 0.25, 0.65, nc=model.yaml['nc'], nkpt=model.yaml['nkpt'], kpt_label=True)
-            t3 = time_synchronized()
-            
-            output = output_to_keypoint(pred)
-
-        else:                      
-            t1 = time_synchronized()
-            pred = model(img, augment=augment)[0]
-            t2 = time_synchronized()
-
-            '''Apply NMS'''
-            pred = non_max_suppression(pred, conf_thresh, iou_thresh)
-            t3 = time_synchronized()
+        '''Apply NMS'''
+        pred = non_max_suppression(pred, conf_thresh, iou_thresh)
+        t3 = time_synchronized()
 
         '''Dummy Equation of Arc'''
         arcUp = [-0.0105011, 0.0977268, -0.308306, 0.315377, -0.229249, 2.11325]
@@ -553,7 +507,7 @@ def detect_basketball(weights: str = 'yolov7.pt',
                 save_label_video = Path(save_label / (filename.split('.')[0]))
                 save_label_video.mkdir(parents=True, exist_ok=True)  # make dir
                 label_per_frame = str(save_label_video / (str(frame) + '.txt'))
-                save_path = str(save_dir / (filename.split('.')[0] + "-out" + ".mp4"))  # img.jpg
+                save_path = str(save_dir / (filename.split('.')[0] + "_nethoopbasket_out" + ".mp4"))  # img.jpg
                 txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
                 #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
                 cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
@@ -563,9 +517,6 @@ def detect_basketball(weights: str = 'yolov7.pt',
                 if len(det):
                     '''Rescale boxes from img_size to im0 size'''
                     det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False).round()
-                    if (pose_est): # Rescale keypoints to original image size
-                        det_norm = det[:, 6:]
-                        det[:, 6:] = scale_coords(img.shape[2:], det[:, 6:], im0.shape, kpt_label=True, step=3)
 
                     '''Print results'''
                     for c in det[:, -1].unique():
@@ -573,225 +524,58 @@ def detect_basketball(weights: str = 'yolov7.pt',
                         s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
                     '''Write results
-
-                            pose_est: get bounding boxes and keypoints
-                                    keypoints: det[:, 6:]
-
-                            not pose_est: get bounding boxes
-
                             bounding box: xyxy (x1 y1 x2 y2)
                                     convert xyxy --> xywh : x1 y1 width height
                     '''
-                    if (pose_est):
-                        for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
-                            xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                            xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
-                            xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
-                            line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
 
-                            # kpts_norm = det_norm[det_index, 6:]
-                            kpts = det[det_index, 6:]
-                            with open(txt_path, 'a') as f:
-                                f.write(('\t'.join(line)) + '\n')
+                    for *xyxy, conf, cls in reversed(det):
+                        xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
+                        xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
+                        xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
+                        line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
+                        with open(txt_path, 'a') as f:
+                            f.write(('\t'.join(line)) + '\n')
+                        label = [str(int(cls)), xywh_label]
+                        #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
+                        with open(label_per_frame, 'a') as f:
+                            f.write((' '.join(label)) + '\n')
 
-                            label = [str(int(cls)), xywh_label]
-                            with open(label_per_frame, 'a') as f:
-                                f.write((' '.join(label)) + '\n') 
-
-                            if save_img or view_img:
-                                label =  f'{names[int(cls)]} {conf:.2f}'
-                                output = output_to_keypoint(pred)
-                                
-                                # print(output[det_index, 7:].T[-2]) # foot kpt Y Coord
-                                # print(output[det_index, 7:].T[-3]) # foot kpt X Coord
-                                #plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], 
-                                             #line_thickness=3, kpt_label=True, kpts=kpts, steps=3, orig_shape=im0.shape[:2])
-                                #plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], 
-                                             #line_thickness=3, kpt_label=True, kpts=kpts, steps=3, orig_shape=im0.shape[:2])
-                            
-                            xy=[]
-                            steps=3
-                            num_kpts = len(kpts) // steps
-
-                            for kid in range(num_kpts):
-                                x_coord, y_coord = kpts[steps * kid], kpts[steps * kid + 1]
-                                if not (x_coord % 640 == 0 or y_coord % 640 == 0):
-                                    xy.append([int(x_coord), int(y_coord)])
-
-                            # ratio set according to scale of axis
-                            ratio_x = (image.shape[1])/20 
-                            ratio_y = (image.shape[0])/5.8
-
-                            x_center = (image.shape[1]/2)/ratio_x   # width
-                            y_center = (image.shape[0]/2)/ratio_y   # height
-
-                            x_new = (xy[-1][0])/ratio_x - x_center
-                            y_new = (xy[-1][1])/ratio_y - y_center
-
-                            yUp = polyUp(x_new)
-                            yDown = polyDown(x_new)
-
-                            position=""
-                            if yUp > y_new and yDown < y_new:
-                                position = "2_points"
+                        cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
+                        if names[int(cls)] == "netbasket":
+                            if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
+                                history.append(False)
                             else:
-                                position = "3_points"
-
-
-                            label = names[int(cls)]
-
-                        for *xyxy, conf, cls in reversed(det):
-                            #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
-                    
-                            if (shots):
-                                cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
-                                if names[int(cls)] == "netbasket":
-                                    if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
-                                        history.append(False)
-                                    else:
-                                        shotmade += 1
-                                        frames_shot_made.append(frame)
-                                        history.append(True)
-                                
-                            if save_img or view_img:  # Add bbox to image
-                                label = names[int(cls)]
-                                if(not pose_est):
-                                    plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1, kpt_label=False)
-
-                            label = names[int(cls)]
-                            # data = {'timestamp' : datetime.now(),
-                            #     'frame': str(frame),
-                            #     'video': filename.split('.')[0],
-                            #     'labels': label,
-                            #     'bbox_coord' : xywh}
+                                shotmade += 1
+                                frames_shot_made.append(frame)
+                                history.append(True)
                             
-                            # df_log = df_log.append(data, ignore_index = True)
-
-                        # NOTE: We send in detected object class too
-                        for element in det.cpu().detach().numpy():
-                            if element[5] == 0.0:
-                                dets_to_sort = np.vstack((dets_to_sort, np.array([element[0], element[1], element[2], element[3], element[4], element[5]])))
-                                #df_log = df_log.append({'player_id' : dets_to_sort[0][-1]}, ignore_index = True)
-                        if track:
-                            tracked_dets = sort_tracker.update(dets_to_sort)
-                            tracks = sort_tracker.getTrackers()
-                            # draw boxes for visualization
-                            if len(tracked_dets) > 0:
-                                bbox_xyxy = tracked_dets[:, :4]
-                                identities = tracked_dets[:, 8]
-                                categories = tracked_dets[:, 4]
-                                confidences = None
-                                for entry in tracked_dets:
-                                    data = { 'timestamp' : datetime.now(),
-                                            'frame': str(frame),
-                                            'video': filename.split('.')[0],
-                                            'labels': label,
-                                            'feet_coord' : xy[-1],
-                                            'player_coordinates' : [entry[0] , entry[1], entry[2], entry[3]],
-                                            'position' : position,
-                                            'playerId' : entry[-1]
-                                            }
-                                    df_log = df_log.append(data, ignore_index = True)
-                                '''loop over tracks'''
-                                for t, track in enumerate(tracks):
-                                    track_color = colors[int(track.detclass)]
-
-                                    [cv2.line(im0, (int(track.centroidarr[i][0]),
-                                                    int(track.centroidarr[i][1])),
-                                            (int(track.centroidarr[i + 1][0]),
-                                            int(track.centroidarr[i + 1][1])),
-                                            track_color, thickness=round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1)
-                                    for i, _ in enumerate(track.centroidarr)
-                                    if i < len(track.centroidarr) - 1]
-                            else:
-                                bbox_xyxy = dets_to_sort[:, :4]
-                                identities = None
-                                categories = dets_to_sort[:, 5]
-                                confidences = dets_to_sort[:, 4]
-                            points = {}
-                            if frame > 1:
-                                points = getPointsPerPlayer()
-                            im0 = draw_boxes(im0, bbox_xyxy, identities, categories, confidences, names, colors, points)
-
-                    else:
-                        for *xyxy, conf, cls in reversed(det):
-                            xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                            xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
-                            xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
-                            line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
-                            with open(txt_path, 'a') as f:
-                                f.write(('\t'.join(line)) + '\n')
-                            label = [str(int(cls)), xywh_label]
-                            #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
-                            with open(label_per_frame, 'a') as f:
-                                f.write((' '.join(label)) + '\n')
-                    
-                            if (shots):
-                                cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
-                                if names[int(cls)] == "netbasket":
-                                    if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
-                                        history.append(False)
-                                    else:
-                                        shotmade += 1
-                                        frames_shot_made.append(frame)
-                                        history.append(True)
-                                
-                            if save_img or view_img:  # Add bbox to image
-                                label = names[int(cls)]
-                                plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1, kpt_label=False)
+                        if save_img or view_img:  # Add bbox to image
                             label = names[int(cls)]
-                            data = {'timestamp' : datetime.now(),
-                                'frame': str(frame),
-                                'video': filename.split('.')[0],
-                                'labels': label,
-                                'bbox_coord' : [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]}
-                            
-                            df_log = df_log.append(data, ignore_index = True)
+                            plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1, kpt_label=False)
+                        label = names[int(cls)]
+                        data = {'timestamp' : datetime.now(),
+                            'frame': str(frame),
+                            'video': filename.split('.')[0],
+                            'labels': label,
+                            'bbox_coord' : [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]}
+                        
+                        df_log = df_log.append(data, ignore_index = True)
 
-                        dets_to_sort = np.empty((0, 6))
-                        # NOTE: We send in detected object class too
-                        for x1, y1, x2, y2, conf, detclass in det.cpu().detach().numpy():
-                            if detclass == 0.0:
-                                dets_to_sort = np.vstack((dets_to_sort, np.array([x1, y1, x2, y2, conf, detclass])))
+                    dets_to_sort = np.empty((0, 6))
+                    # NOTE: We send in detected object class too
+                    for x1, y1, x2, y2, conf, detclass in det.cpu().detach().numpy():
+                        if detclass == 0.0:
+                            dets_to_sort = np.vstack((dets_to_sort, np.array([x1, y1, x2, y2, conf, detclass])))
                 
                 # Add frame with no detections in logs
                 else:
                     data = {'timestamp' : datetime.now(),
                         'frame': str(frame),
                         'video': filename.split('.')[0],
-                        'labels': ''}
+                        'labels': '',
+                        'bbox_coord': ' '}
                     
                     df_log = df_log.append(data, ignore_index = True)
-
-                '''Perform Tracking'''
-                if track:
-                    tracked_dets = sort_tracker.update(dets_to_sort)
-                    tracks = sort_tracker.getTrackers()
-
-                    # draw boxes for visualization
-                    if len(tracked_dets) > 0:
-                        bbox_xyxy = tracked_dets[:, :4]
-                        identities = tracked_dets[:, 8]
-                        categories = tracked_dets[:, 4]
-                        confidences = None
-
-                        '''loop over tracks'''
-                        for t, track in enumerate(tracks):
-                            track_color = colors[int(track.detclass)]
-
-                            [cv2.line(im0, (int(track.centroidarr[i][0]),
-                                            int(track.centroidarr[i][1])),
-                                    (int(track.centroidarr[i + 1][0]),
-                                    int(track.centroidarr[i + 1][1])),
-                                    track_color, thickness=round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1)
-                            for i, _ in enumerate(track.centroidarr)
-                            if i < len(track.centroidarr) - 1]
-                    else:
-                        bbox_xyxy = dets_to_sort[:, :4]
-                        identities = None
-                        categories = dets_to_sort[:, 5]
-                        confidences = dets_to_sort[:, 4]
-                    im0 = draw_boxes(im0, bbox_xyxy, identities, categories, confidences, names, colors)
 
                 '''Print inference and NMS time'''
                 print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
@@ -816,15 +600,12 @@ def detect_basketball(weights: str = 'yolov7.pt',
                             save_path += '.mp4'
                         vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                     vid_writer.write(im0)
-                    df_log.to_csv("datasets/logs/" + weights_name + "/" + filename.split('.')[0] + "_logs.csv")
+                    df_log.to_csv("datasets/logs/" + weights_name + "/" + filename.split('.')[0] + "_nethoopbasket_logs.csv")
 
     print(f'Done. ({time.time() - t0:.3f}s)')
     
-    if (shots):
-        print(f'Total Made Shots: {shotmade}')
-        return vid_path, txt_path, frames_shot_made, shotmade
-    else:
-        return vid_path, txt_path     
+    print(f'Total Made Shots: {shotmade}')
+    return vid_path, txt_path, frames_shot_made, shotmade
 
 def detect_actions(weights: str = 'yolov7.pt',
            source: str = 'inference/images',
@@ -837,9 +618,7 @@ def detect_actions(weights: str = 'yolov7.pt',
            augment: bool = False,
            track: bool = True,
            sampling: bool = False,
-           temporal: bool = False,
-           shots: bool = False,
-           pose_est: bool = False) -> tuple:
+           temporal: bool = False) -> tuple:
     """
     Performs inference on an input video
     :param weights: YOLO-V7 .pt file
@@ -860,14 +639,6 @@ def detect_actions(weights: str = 'yolov7.pt',
     ##################################################################################################################################################
     # Parameters
     ##################################################################################################################################################
-    '''Variables for counting the shots made'''
-    if (shots):
-        frames_shot_made: list = []
-        NUMBER_OF_FRAMES_AFTER_SHOT_MADE = 5
-        shotmade = 0
-        history = []
-        for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
-            history.append(False)
     
     '''Sampling rate to generate labels'''
     if(sampling):
@@ -909,8 +680,7 @@ def detect_actions(weights: str = 'yolov7.pt',
     model = attempt_load(weights, map_location=device)  # load FP32 model
     stride = int(model.stride.max())  # model stride
     imgsz = check_img_size(img_size, s=stride)  # check img_size
-    if (not pose_est):
-        model = TracedModel(model, device, img_size)
+    model = TracedModel(model, device, img_size)
     if half:
         model.half()  # to FP16
 
@@ -945,24 +715,14 @@ def detect_actions(weights: str = 'yolov7.pt',
             for _ in range(3):
                 model(img, augment=augment)[0]
 
-        '''Inference'''
-        if(pose_est):
-            t1 = time_synchronized()
-            pred = model(img, augment=augment)[0]
-            t2 = time_synchronized()
-            pred = non_max_suppression_kpt(pred, 0.25, 0.65, nc=model.yaml['nc'], nkpt=model.yaml['nkpt'], kpt_label=True)
-            t3 = time_synchronized()
-            
-            output = output_to_keypoint(pred)
+        '''Inference'''                     
+        t1 = time_synchronized()
+        pred = model(img, augment=augment)[0]
+        t2 = time_synchronized()
 
-        else:                      
-            t1 = time_synchronized()
-            pred = model(img, augment=augment)[0]
-            t2 = time_synchronized()
-
-            '''Apply NMS'''
-            pred = non_max_suppression(pred, conf_thresh, iou_thresh)
-            t3 = time_synchronized()
+        '''Apply NMS'''
+        pred = non_max_suppression(pred, conf_thresh, iou_thresh)
+        t3 = time_synchronized()
 
         '''Dummy Equation of Arc'''
         arcUp = [-0.0105011, 0.0977268, -0.308306, 0.315377, -0.229249, 2.11325]
@@ -980,7 +740,7 @@ def detect_actions(weights: str = 'yolov7.pt',
                 save_label_video = Path(save_label / (filename.split('.')[0]))
                 save_label_video.mkdir(parents=True, exist_ok=True)  # make dir
                 label_per_frame = str(save_label_video / (str(frame) + '.txt'))
-                save_path = str(save_dir / (filename.split('.')[0] + "-out" + ".mp4"))  # img.jpg
+                save_path = str(save_dir / (filename.split('.')[0] + "_actions_out" + ".mp4"))  # img.jpg
                 txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
                 #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
                 cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
@@ -990,9 +750,6 @@ def detect_actions(weights: str = 'yolov7.pt',
                 if len(det):
                     '''Rescale boxes from img_size to im0 size'''
                     det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False).round()
-                    if (pose_est): # Rescale keypoints to original image size
-                        det_norm = det[:, 6:]
-                        det[:, 6:] = scale_coords(img.shape[2:], det[:, 6:], im0.shape, kpt_label=True, step=3)
 
                     '''Print results'''
                     for c in det[:, -1].unique():
@@ -1000,223 +757,48 @@ def detect_actions(weights: str = 'yolov7.pt',
                         s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
                     '''Write results
-
-                            pose_est: get bounding boxes and keypoints
-                                    keypoints: det[:, 6:]
-
-                            not pose_est: get bounding boxes
-
                             bounding box: xyxy (x1 y1 x2 y2)
                                     convert xyxy --> xywh : x1 y1 width height
                     '''
-                    if (pose_est):
-                        for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
-                            xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                            xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
-                            xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
-                            line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
-
-                            # kpts_norm = det_norm[det_index, 6:]
-                            kpts = det[det_index, 6:]
-                            with open(txt_path, 'a') as f:
-                                f.write(('\t'.join(line)) + '\n')
-
-                            label = [str(int(cls)), xywh_label]
-                            with open(label_per_frame, 'a') as f:
-                                f.write((' '.join(label)) + '\n') 
-
-                            if save_img or view_img:
-                                label =  f'{names[int(cls)]} {conf:.2f}'
-                                output = output_to_keypoint(pred)
-                                
-                                # print(output[det_index, 7:].T[-2]) # foot kpt Y Coord
-                                # print(output[det_index, 7:].T[-3]) # foot kpt X Coord
-                                #plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], 
-                                             #line_thickness=3, kpt_label=True, kpts=kpts, steps=3, orig_shape=im0.shape[:2])
+                    for *xyxy, conf, cls in reversed(det):
+                        xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
+                        xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
+                        xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
+                        line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
+                        with open(txt_path, 'a') as f:
+                            f.write(('\t'.join(line)) + '\n')
+                        label = [str(int(cls)), xywh_label]
+                        #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
+                        with open(label_per_frame, 'a') as f:
+                            f.write((' '.join(label)) + '\n')
                             
-                            xy=[]
-                            steps=3
-                            num_kpts = len(kpts) // steps
-
-                            for kid in range(num_kpts):
-                                x_coord, y_coord = kpts[steps * kid], kpts[steps * kid + 1]
-                                if not (x_coord % 640 == 0 or y_coord % 640 == 0):
-                                    xy.append([int(x_coord), int(y_coord)])
-
-                            # ratio set according to scale of axis
-                            ratio_x = (image.shape[1])/20 
-                            ratio_y = (image.shape[0])/5.8
-
-                            x_center = (image.shape[1]/2)/ratio_x   # width
-                            y_center = (image.shape[0]/2)/ratio_y   # height
-
-                            x_new = (xy[-1][0])/ratio_x - x_center
-                            y_new = (xy[-1][1])/ratio_y - y_center
-
-                            yUp = polyUp(x_new)
-                            yDown = polyDown(x_new)
-
-                            position=""
-                            if yUp > y_new and yDown < y_new:
-                                position = "2_points"
-                            else:
-                                position = "3_points"
-
-
+                        if save_img or view_img:  # Add bbox to image
                             label = names[int(cls)]
+                            plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1, kpt_label=False)
+                        label = names[int(cls)]
+                        data = {'timestamp' : datetime.now(),
+                            'frame': str(frame),
+                            'video': filename.split('.')[0],
+                            'labels': label,
+                            'bbox_coord' : [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()] }
+                        
+                        df_log = df_log.append(data, ignore_index = True)
 
-                        for *xyxy, conf, cls in reversed(det):
-                            #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
-                    
-                            if (shots):
-                                cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
-                                if names[int(cls)] == "netbasket":
-                                    if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
-                                        history.append(False)
-                                    else:
-                                        shotmade += 1
-                                        frames_shot_made.append(frame)
-                                        history.append(True)
-                                
-                            if save_img or view_img:  # Add bbox to image
-                                label = names[int(cls)]
-                                if(not pose_est):
-                                    plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1, kpt_label=False)
-
-                            label = names[int(cls)]
-                            # data = {'timestamp' : datetime.now(),
-                            #     'frame': str(frame),
-                            #     'video': filename.split('.')[0],
-                            #     'labels': label,
-                            #     'bbox_coord' : xywh}
-                            
-                            # df_log = df_log.append(data, ignore_index = True)
-
-                        # NOTE: We send in detected object class too
-                        for element in det.cpu().detach().numpy():
-                            if element[5] == 0.0:
-                                dets_to_sort = np.vstack((dets_to_sort, np.array([element[0], element[1], element[2], element[3], element[4], element[5]])))
-                                #df_log = df_log.append({'player_id' : dets_to_sort[0][-1]}, ignore_index = True)
-                        if track:
-                            tracked_dets = sort_tracker.update(dets_to_sort)
-                            tracks = sort_tracker.getTrackers()
-                            # draw boxes for visualization
-                            if len(tracked_dets) > 0:
-                                bbox_xyxy = tracked_dets[:, :4]
-                                identities = tracked_dets[:, 8]
-                                categories = tracked_dets[:, 4]
-                                confidences = None
-                                for entry in tracked_dets:
-                                    data = { 'timestamp' : datetime.now(),
-                                            'frame': str(frame),
-                                            'video': filename.split('.')[0],
-                                            'labels': label,
-                                            'feet_coord' : xy[-1],
-                                            'player_coordinates' : [entry[0] , entry[1], entry[2], entry[3]],
-                                            'position' : position,
-                                            'playerId' : entry[-1]
-                                            }
-                                    df_log = df_log.append(data, ignore_index = True)
-                                '''loop over tracks'''
-                                for t, track in enumerate(tracks):
-                                    track_color = colors[int(track.detclass)]
-
-                                    [cv2.line(im0, (int(track.centroidarr[i][0]),
-                                                    int(track.centroidarr[i][1])),
-                                            (int(track.centroidarr[i + 1][0]),
-                                            int(track.centroidarr[i + 1][1])),
-                                            track_color, thickness=round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1)
-                                    for i, _ in enumerate(track.centroidarr)
-                                    if i < len(track.centroidarr) - 1]
-                            else:
-                                bbox_xyxy = dets_to_sort[:, :4]
-                                identities = None
-                                categories = dets_to_sort[:, 5]
-                                confidences = dets_to_sort[:, 4]
-                            points = {}
-                            if frame > 1:
-                                points = getPointsPerPlayer(frame-1, filename.split('.')[0])
-                            im0 = draw_boxes(im0, bbox_xyxy, identities, categories, confidences, names, colors, points)
-
-                    else:
-                        for *xyxy, conf, cls in reversed(det):
-                            xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                            xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
-                            xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
-                            line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
-                            with open(txt_path, 'a') as f:
-                                f.write(('\t'.join(line)) + '\n')
-                            label = [str(int(cls)), xywh_label]
-                            #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
-                            with open(label_per_frame, 'a') as f:
-                                f.write((' '.join(label)) + '\n')
-                    
-                            if (shots):
-                                cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
-                                if names[int(cls)] == "netbasket":
-                                    if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
-                                        history.append(False)
-                                    else:
-                                        shotmade += 1
-                                        frames_shot_made.append(frame)
-                                        history.append(True)
-                                
-                            if save_img or view_img:  # Add bbox to image
-                                label = names[int(cls)]
-                                plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1, kpt_label=False)
-                            label = names[int(cls)]
-                            data = {'timestamp' : datetime.now(),
-                                'frame': str(frame),
-                                'video': filename.split('.')[0],
-                                'labels': label,
-                                'bbox_coord' : [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]}
-                            
-                            df_log = df_log.append(data, ignore_index = True)
-
-                        dets_to_sort = np.empty((0, 6))
-                        # NOTE: We send in detected object class too
-                        for x1, y1, x2, y2, conf, detclass in det.cpu().detach().numpy():
-                            if detclass == 0.0:
-                                dets_to_sort = np.vstack((dets_to_sort, np.array([x1, y1, x2, y2, conf, detclass])))
-                
+                    dets_to_sort = np.empty((0, 6))
+                    # NOTE: We send in detected object class too
+                    for x1, y1, x2, y2, conf, detclass in det.cpu().detach().numpy():
+                        if detclass == 0.0:
+                            dets_to_sort = np.vstack((dets_to_sort, np.array([x1, y1, x2, y2, conf, detclass])))
+            
                 # Add frame with no detections in logs
                 else:
                     data = {'timestamp' : datetime.now(),
                         'frame': str(frame),
                         'video': filename.split('.')[0],
-                        'labels': ''}
+                        'labels': '',
+                        'bbox_coord' : ''}
                     
                     df_log = df_log.append(data, ignore_index = True)
-
-                if (not pose_est):
-                    '''Perform Tracking'''
-                    if track:
-                        tracked_dets = sort_tracker.update(dets_to_sort)
-                        tracks = sort_tracker.getTrackers()
-                        # draw boxes for visualization
-                        if len(tracked_dets) > 0:
-                            bbox_xyxy = tracked_dets[:, :4]
-                            identities = tracked_dets[:, 8]
-                            categories = tracked_dets[:, 4]
-                            confidences = None
-
-                            '''loop over tracks'''
-                            for t, track in enumerate(tracks):
-                                track_color = colors[int(track.detclass)]
-
-                                [cv2.line(im0, (int(track.centroidarr[i][0]),
-                                                int(track.centroidarr[i][1])),
-                                        (int(track.centroidarr[i + 1][0]),
-                                        int(track.centroidarr[i + 1][1])),
-                                        track_color, thickness=round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1)
-                                for i, _ in enumerate(track.centroidarr)
-                                if i < len(track.centroidarr) - 1]
-                        else:
-                            bbox_xyxy = dets_to_sort[:, :4]
-                            identities = None
-                            categories = dets_to_sort[:, 5]
-                            confidences = dets_to_sort[:, 4]
-                        im0 = draw_boxes(im0, bbox_xyxy, identities, categories, confidences, names, colors)
 
                 '''Print inference and NMS time'''
                 print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
@@ -1241,53 +823,49 @@ def detect_actions(weights: str = 'yolov7.pt',
                             save_path += '.mp4'
                         vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                     vid_writer.write(im0)
-                    df_log.to_csv("datasets/logs/" + weights_name + "/" + filename.split('.')[0] + "_logs.csv")
+                    df_log.to_csv("datasets/logs/" + weights_name + "/" + filename.split('.')[0] + "_actions_logs.csv")
 
     print(f'Done. ({time.time() - t0:.3f}s)')
     
-    if (shots):
-        print(f'Total Made Shots: {shotmade}')
-        return vid_path, txt_path, frames_shot_made, shotmade
-    else:
-        return vid_path, txt_path
+    return vid_path, txt_path
         
 
 def run_detect(data):
     weights = data[0]
     source = data[1]
-    shots = data[2]
-    pose_est = data[3]
+    model = data[2]
     for vid in os.listdir(source):
         with torch.no_grad():
-            video_path = detect(weights=weights, source=source + str(vid), shots=shots, pose_est=pose_est)
-            strip_optimizer(weights)
+            if(model=='pose'):
+                video_path = detect_pose(weights=weights, source=source + str(vid))
+            if(model=='nethoopbasket'):
+                video_path = detect_basketball(weights=weights, source=source + str(vid))
+                strip_optimizer(weights)
+            if(model=='actions'):
+                video_path = detect_actions(weights=weights, source=source + str(vid))
+                strip_optimizer(weights)
         print(video_path)
         torch.cuda.empty_cache()
 
 if __name__ == '__main__':
-    weights = ['weights/net_hoop_basket_3.pt','weights/yolov7-w6-pose.pt', 'weights/actions_1.pt']
-    source = 'test_img/'
+    weights = ['weights/net_hoop_basket_5.pt','weights/yolov7-w6-pose.pt', 'weights/actions_2.pt']
+    source = 'datasets/videos_input/'
     
     for vid in os.listdir(source):
         torch.cuda.empty_cache()
         with torch.no_grad():
-            video_path = detect(weights='weights/yolov7-w6-pose.pt', source=source + str(vid), shots=False, pose_est=True)
+            video_path = detect_pose(weights='weights/yolov7-w6-pose.pt', source=source + str(vid))
             # strip_optimizer(weights)
         print(video_path)
-
-    '''Get stats after processing'''
-    # for vid in os.listdir(source):
-    #     get_stats(weights=weights, source=str(vid))
         
 
     '''For parallel processing: '''
 
-    # data = [[weights[0],source,True,False],[
-    #     weights[1],source,False,True],
-    #     [weights[2],source,False,False]]
+    # data = [[weights[0],source, 'nethoopbasket'],[
+    #     weights[1],source, 'pose'],
+    #     [weights[2],source, 'actions']]
 
     # pool = Pool(3)
-    # # run_detect(data)
     # pool.map(run_detect, data)
 
     
