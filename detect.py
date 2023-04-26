@@ -11,6 +11,9 @@ import pandas as pd
 import torch
 from numpy import random
 
+from GPUtil import showUtilization as gpu_usage
+from numba import cuda
+
 from torchvision import transforms
 
 from models.experimental import attempt_load
@@ -386,36 +389,35 @@ def detect(weights: str = 'yolov7.pt',
                     
                     df_log = df_log.append(data, ignore_index = True)
 
-                if (not pose_est):
-                    '''Perform Tracking'''
-                    if track:
-                        tracked_dets = sort_tracker.update(dets_to_sort)
-                        tracks = sort_tracker.getTrackers()
+                '''Perform Tracking'''
+                if track:
+                    tracked_dets = sort_tracker.update(dets_to_sort)
+                    tracks = sort_tracker.getTrackers()
 
-                        # draw boxes for visualization
-                        if len(tracked_dets) > 0:
-                            bbox_xyxy = tracked_dets[:, :4]
-                            identities = tracked_dets[:, 8]
-                            categories = tracked_dets[:, 4]
-                            confidences = None
+                    # draw boxes for visualization
+                    if len(tracked_dets) > 0:
+                        bbox_xyxy = tracked_dets[:, :4]
+                        identities = tracked_dets[:, 8]
+                        categories = tracked_dets[:, 4]
+                        confidences = None
 
-                            '''loop over tracks'''
-                            for t, track in enumerate(tracks):
-                                track_color = colors[int(track.detclass)]
+                        '''loop over tracks'''
+                        for t, track in enumerate(tracks):
+                            track_color = colors[int(track.detclass)]
 
-                                [cv2.line(im0, (int(track.centroidarr[i][0]),
-                                                int(track.centroidarr[i][1])),
-                                        (int(track.centroidarr[i + 1][0]),
-                                        int(track.centroidarr[i + 1][1])),
-                                        track_color, thickness=round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1)
-                                for i, _ in enumerate(track.centroidarr)
-                                if i < len(track.centroidarr) - 1]
-                        else:
-                            bbox_xyxy = dets_to_sort[:, :4]
-                            identities = None
-                            categories = dets_to_sort[:, 5]
-                            confidences = dets_to_sort[:, 4]
-                        im0 = draw_boxes(im0, bbox_xyxy, identities, categories, confidences, names, colors)
+                            [cv2.line(im0, (int(track.centroidarr[i][0]),
+                                            int(track.centroidarr[i][1])),
+                                    (int(track.centroidarr[i + 1][0]),
+                                    int(track.centroidarr[i + 1][1])),
+                                    track_color, thickness=round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1)
+                            for i, _ in enumerate(track.centroidarr)
+                            if i < len(track.centroidarr) - 1]
+                    else:
+                        bbox_xyxy = dets_to_sort[:, :4]
+                        identities = None
+                        categories = dets_to_sort[:, 5]
+                        confidences = dets_to_sort[:, 4]
+                    im0 = draw_boxes(im0, bbox_xyxy, identities, categories, confidences, names, colors)
 
                 '''Print inference and NMS time'''
                 print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
@@ -469,11 +471,11 @@ if __name__ == '__main__':
     source = 'datasets/videos_input/'
     
     for vid in os.listdir(source):
+        torch.cuda.empty_cache()
         with torch.no_grad():
-            video_path = detect(weights='weights/actions_1.pt', source=source + str(vid), shots=False, pose_est=False)
+            video_path = detect(weights='weights/yolov7-w6-pose.pt', source=source + str(vid), shots=False, pose_est=True, temporal=False)
             # strip_optimizer(weights)
         print(video_path)
-        torch.cuda.empty_cache()
 
     '''Get stats after processing'''
     # for vid in os.listdir(source):
