@@ -24,9 +24,10 @@ from utils.plots import plot_one_box, output_to_keypoint, plot_skeleton_kpts,col
 from utils.torch_utils import select_device, time_synchronized, TracedModel
 from utils.TubeDETR import stvg
 from persistence.repositories import paths
+from player_shots import getPointsPerPlayer
 
 
-def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, names=None, colors=None):
+def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, names=None, colors=None, points = {}):
     """
     Function to Draw Bounding boxes when tracking
     :param img:
@@ -36,6 +37,7 @@ def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, na
     :param confidences:
     :param names:
     :param colors:
+    :param points:
     :return: image
     """
     for i, box in enumerate(bbox):
@@ -49,8 +51,15 @@ def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, na
         color = colors[cat]
 
         cv2.rectangle(img, (x1, y1), (x2, y2), color, tl)
-
-        label = str(id) + ":" + names[cat] if identities is not None else f'{names[cat]} {confidences[i]:.2f}'
+        
+        numPoints = 0
+        id = float(str(id) + '.0')
+        if len(points) > 0 and id in points:
+            numPoints = points[id]
+        print(numPoints)
+        label = str(id) + ": " + f'{numPoints} Points'
+        #label = str(id) + ":" + names[cat] if identities is not None else f'{names[cat]} {confidences[i]:.2f}'
+        print(label)
         tf = max(tl - 1, 1)  # font thickness
         t_size = cv2.getTextSize(label, 0, fontScale=tl / 3, thickness=tf)[0]
         c2 = x1 + t_size[0], y1 - t_size[1] - 3
@@ -211,7 +220,6 @@ def detect(weights: str = 'yolov7.pt',
             t1 = time_synchronized()
             pred = model(img, augment=augment)[0]
             t2 = time_synchronized()
-
             pred = non_max_suppression_kpt(pred, 0.25, 0.65, nc=model.yaml['nc'], nkpt=model.yaml['nkpt'], kpt_label=True)
             t3 = time_synchronized()
             
@@ -293,8 +301,8 @@ def detect(weights: str = 'yolov7.pt',
                                 
                                 # print(output[det_index, 7:].T[-2]) # foot kpt Y Coord
                                 # print(output[det_index, 7:].T[-3]) # foot kpt X Coord
-                                plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], 
-                                             line_thickness=3, kpt_label=True, kpts=kpts, steps=3, orig_shape=im0.shape[:2])
+                                #plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], 
+                                             #line_thickness=3, kpt_label=True, kpts=kpts, steps=3, orig_shape=im0.shape[:2])
                             
                             xy=[]
                             steps=3
@@ -326,16 +334,79 @@ def detect(weights: str = 'yolov7.pt',
 
 
                             label = names[int(cls)]
-                            data = { 'timestamp' : datetime.now(),
-                                'frame': str(frame),
-                                'video': filename.split('.')[0],
-                                'labels': label,
-                                'person' : "ID",
-                                'feet_coord' : xy[-1],
-                                'position' : position
-                                }
+
+                        for *xyxy, conf, cls in reversed(det):
+                            #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
+                    
+                            if (shots):
+                                cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
+                                if names[int(cls)] == "netbasket":
+                                    if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
+                                        history.append(False)
+                                    else:
+                                        shotmade += 1
+                                        frames_shot_made.append(frame)
+                                        history.append(True)
+                                
+                            if save_img or view_img:  # Add bbox to image
+                                label = names[int(cls)]
+                                if(not pose_est):
+                                    plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1, kpt_label=False)
+
+                            label = names[int(cls)]
+                            # data = {'timestamp' : datetime.now(),
+                            #     'frame': str(frame),
+                            #     'video': filename.split('.')[0],
+                            #     'labels': label,
+                            #     'bbox_coord' : xywh}
                             
-                            df_log = df_log.append(data, ignore_index = True)
+                            # df_log = df_log.append(data, ignore_index = True)
+
+                        # NOTE: We send in detected object class too
+                        for element in det.cpu().detach().numpy():
+                            if element[5] == 0.0:
+                                dets_to_sort = np.vstack((dets_to_sort, np.array([element[0], element[1], element[2], element[3], element[4], element[5]])))
+                                #df_log = df_log.append({'player_id' : dets_to_sort[0][-1]}, ignore_index = True)
+                        if track:
+                            tracked_dets = sort_tracker.update(dets_to_sort)
+                            tracks = sort_tracker.getTrackers()
+                            # draw boxes for visualization
+                            if len(tracked_dets) > 0:
+                                bbox_xyxy = tracked_dets[:, :4]
+                                identities = tracked_dets[:, 8]
+                                categories = tracked_dets[:, 4]
+                                confidences = None
+                                for entry in tracked_dets:
+                                    data = { 'timestamp' : datetime.now(),
+                                            'frame': str(frame),
+                                            'video': filename.split('.')[0],
+                                            'labels': label,
+                                            'feet_coord' : xy[-1],
+                                            'player_coordinates' : [entry[0] , entry[1], entry[2], entry[3]],
+                                            'position' : position,
+                                            'playerId' : entry[-1]
+                                            }
+                                    df_log = df_log.append(data, ignore_index = True)
+                                '''loop over tracks'''
+                                for t, track in enumerate(tracks):
+                                    track_color = colors[int(track.detclass)]
+
+                                    [cv2.line(im0, (int(track.centroidarr[i][0]),
+                                                    int(track.centroidarr[i][1])),
+                                            (int(track.centroidarr[i + 1][0]),
+                                            int(track.centroidarr[i + 1][1])),
+                                            track_color, thickness=round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1)
+                                    for i, _ in enumerate(track.centroidarr)
+                                    if i < len(track.centroidarr) - 1]
+                            else:
+                                bbox_xyxy = dets_to_sort[:, :4]
+                                identities = None
+                                categories = dets_to_sort[:, 5]
+                                confidences = dets_to_sort[:, 4]
+                            points = {}
+                            if frame > 1:
+                                points = getPointsPerPlayer()
+                            im0 = draw_boxes(im0, bbox_xyxy, identities, categories, confidences, names, colors, points)
 
                     else:
                         for *xyxy, conf, cls in reversed(det):
@@ -362,15 +433,13 @@ def detect(weights: str = 'yolov7.pt',
                                 
                             if save_img or view_img:  # Add bbox to image
                                 label = names[int(cls)]
-                                print(label)
                                 plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1, kpt_label=False)
-
                             label = names[int(cls)]
                             data = {'timestamp' : datetime.now(),
                                 'frame': str(frame),
                                 'video': filename.split('.')[0],
                                 'labels': label,
-                                'bbox_coord' : xywh}
+                                'bbox_coord' : [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]}
                             
                             df_log = df_log.append(data, ignore_index = True)
 
@@ -467,13 +536,13 @@ def run_detect(data):
         torch.cuda.empty_cache()
 
 if __name__ == '__main__':
-    weights = ['weights/net_hoop_basket_2.pt','weights/yolov7-w6-pose.pt', 'weights/actions_1.pt']
-    source = 'datasets/videos_input/'
+    weights = ['weights/net_hoop_basket_3.pt','weights/yolov7-w6-pose.pt', 'weights/actions_1.pt']
+    source = 'test_img/'
     
     for vid in os.listdir(source):
         torch.cuda.empty_cache()
         with torch.no_grad():
-            video_path = detect(weights='weights/yolov7-w6-pose.pt', source=source + str(vid), shots=False, pose_est=True, temporal=False)
+            video_path = detect(weights='weights/actions_1.pt', source=source + str(vid), shots=False, pose_est=False)
             # strip_optimizer(weights)
         print(video_path)
 
