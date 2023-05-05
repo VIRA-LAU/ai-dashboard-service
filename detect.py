@@ -11,9 +11,6 @@ import pandas as pd
 import torch
 from numpy import random
 
-from GPUtil import showUtilization as gpu_usage
-from numba import cuda
-
 from torchvision import transforms
 
 from models.experimental import attempt_load
@@ -25,9 +22,10 @@ from utils.torch_utils import select_device, time_synchronized, TracedModel
 from utils.TubeDETR import stvg
 from persistence.repositories import paths
 from player_shots import getPointsPerPlayer
+from shots_missed import getShotsMissedPerPlayer
 
 
-def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, names=None, colors=None, points = {}):
+def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, names=None, colors=None, points = {}, missed = {}):
     """
     Function to Draw Bounding boxes when tracking
     :param img:
@@ -54,11 +52,13 @@ def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, na
         cv2.rectangle(img, (x1, y1), (x2, y2), color, tl)
         
         numPoints = 0
+        shotsMissed = 0
         id = float(str(id) + '.0')
         if len(points) > 0 and id in points:
             numPoints = points[id]
-        print(numPoints)
-        label = str(id) + ": " + f'{numPoints} Points'
+        if len(missed) > 0 and id in missed:
+            shotsMissed = missed[id]
+        label = str(id) + ": " + f'{numPoints} Scored, ' + f'{shotsMissed} Missed'
         # label = str(id) + ":" + names[cat] if identities is not None else f'{names[cat]} {confidences[i]:.2f}'
         print(label)
         tf = max(tl - 1, 1)  # font thickness
@@ -277,9 +277,9 @@ def detect_pose(weights: str = 'yolov7.pt',
                         plot_kpts(im0, kpts=kpts, steps=3, orig_shape=im0.shape[:2])
 
                     # NOTE: We send in detected object class too
-                    for element in det.cpu().detach().numpy():
-                        if element[5] == 0.0:
-                            dets_to_sort = np.vstack((dets_to_sort, np.array([element[0], element[1], element[2], element[3], element[4], element[5]])))
+                        for x1, y1, x2, y2, conf, detclass in det.cpu().detach().numpy():
+                            if detclass == 0.0:
+                                dets_to_sort = np.vstack((dets_to_sort, np.array([x1, y1, x2, y2, conf, detclass])))
                             #df_log = df_log.append({'player_id' : dets_to_sort[0][-1]}, ignore_index = True)
 
                     if track:
@@ -293,7 +293,7 @@ def detect_pose(weights: str = 'yolov7.pt',
                             categories = tracked_dets[:, 4]
                             confidences = None
                             for entry in tracked_dets:
-                                data = { 'timestamp' : datetime.now(),
+                                data = {'timestamp' : datetime.now(),
                                         'frame': str(frame),
                                         'video': filename.split('.')[0],
                                         'labels': label,
@@ -321,10 +321,11 @@ def detect_pose(weights: str = 'yolov7.pt',
                             categories = dets_to_sort[:, 5]
                             confidences = dets_to_sort[:, 4]
                         points = {}
-
+                        missed = {}
                         if frame > 1:
                             points = getPointsPerPlayer(frame-1, filename.split('.')[0], shooting_frames = 90, netbasket_frames = 120, conf = 0.92)
-                        im0 = draw_boxes(im0, bbox_xyxy, identities, categories, confidences, names, colors, points)
+                            missed = getShotsMissedPerPlayer(frame-1, filename.split('.')[0], shooting_frames = 90, netbasket_frames = 120, conf = 0.92)
+                        im0 = draw_boxes(im0, bbox_xyxy, identities, categories, confidences, names, colors, points, missed)
 
                 # Add frame with no detections in logs
                 else:
@@ -846,18 +847,26 @@ def run_detect(data):
                 strip_optimizer(weights)
         print(video_path)
         torch.cuda.empty_cache()
-
-if __name__ == '__main__':
-    weights = ['weights/net_hoop_basket_5.pt','weights/yolov7-w6-pose.pt', 'weights/actions_2.pt']
-    source = 'datasets/videos_input/'
-    
+        
+def detect_all(source: str = 'datasets/videos_input/'):
     for vid in os.listdir(source):
         torch.cuda.empty_cache()
         with torch.no_grad():
-            video_path = detect_pose(weights='weights/yolov7-w6-pose.pt', source=source + str(vid))
+            action_weights = 'weights/actions_2.pt'
+            basket_weights = 'weights/net_hoop_basket_combined_april.pt'
+            pose_weights = 'weights/yolov7-w6-pose.pt'
+            detect_actions(weights=action_weights, source=source + str(vid))
+            strip_optimizer(action_weights)
+            video_path, txt_path, frames_shot_made, shotsmade = detect_basketball(weights=basket_weights, source=source + str(vid))
+            strip_optimizer(basket_weights)
+            video_path, txt_path = detect_pose(weights=pose_weights, source=source + str(vid))
+            strip_optimizer(pose_weights)
             # strip_optimizer(weights)
         print(video_path)
-        
+    return video_path, txt_path, frames_shot_made, shotsmade
+    
+if __name__ == '__main__':
+    detect_all()
 
     '''For parallel processing: '''
 
