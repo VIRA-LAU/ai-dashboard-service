@@ -115,6 +115,11 @@ def detect_pose(weights: str = 'yolov7.pt',
     save_txt = paths.bbox_coordinates_path / weights_name
     save_label = paths.labels_path / weights_name
     save_logs = paths.logs_path / weights_name
+
+    video_input_path = paths.video_input_path
+    
+    temporal_frames = paths.temporal_frames
+
     save_dir.mkdir(parents=True, exist_ok=True)  # create directory
     save_txt.mkdir(parents=True, exist_ok=True)  # create directory
     save_label.mkdir(parents=True, exist_ok=True)  # create directory
@@ -126,8 +131,8 @@ def detect_pose(weights: str = 'yolov7.pt',
     '''Temporal Analysis'''
     if(temporal):
         temporal_model='utils/TubeDETR/models/checkpoints/res352/vidstg_k4.pth'
-        out_dir = 'datasets/videos_input/'
-        out_dir_frames = 'datasets/videos_input_frames/'
+        out_dir = video_input_path
+        out_dir_frames = temporal_frames
         source = stvg.analyze(source,temporal_model,out_dir,out_dir_frames)
 
     '''Initialize'''

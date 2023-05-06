@@ -6,6 +6,10 @@ paths_file = "assets/paths.json"
 
 video_input_path = Path(parse_json(paths_file)['videos_input_path'])
 video_inferred_path = Path(parse_json(paths_file)["videos_inferred_path"])
+
+temporal_videos_input_path = Path(parse_json(paths_file)["temporal_videos_input_path"])
+temporal_frames = Path(parse_json(paths_file)["temporal_frames"])
+
 bbox_coordinates_path = Path(parse_json(paths_file)["bbox_coordinates_path"])
 keys_path = Path(parse_json(paths_file)["keys_path"])
 highlights_path = Path(parse_json(paths_file)["highlights_path"])
@@ -13,4 +17,5 @@ concatenated_path = Path(parse_json(paths_file)["concatenated_path"])
 song_path = parse_json(paths_file)["song_path"]
 concatenated_with_music = Path(parse_json(paths_file)["concatenated_with_music"])
 labels_path = Path(parse_json(paths_file)["label_path"])
+
 logs_path = Path(parse_json(paths_file)["logs_path"])
