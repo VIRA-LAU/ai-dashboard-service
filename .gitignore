@@ -6,25 +6,7 @@ env/
 
 traced_model.pt
 
-datasets/bbox_coord/*
-datasets/conatenated/*
-datasets/concatenated_with_music/*
-datasets/labels/*
-datasets/videos_inferred/*
-datasets/videos_input/*
-datasets/videos_input_frames/*
-datasets/videos_inputs_datasets/*
-datasets/logs/*
-
-!datasets/bbox_coord/.gitkeep
-!datasets/conatenated/.gitkeep
-!datasets/concatenated_with_music/.gitkeep
-!datasets/labels/.gitkeep
-!datasets/videos_inferred/.gitkeep
-!datasets/videos_input/.gitkeep
-!datasets/videos_input_frames/.gitkeep
-!datasets/videos_inputs_datasets/.gitkeep
-!datasets/logs/.gitkeep
+datasets/*
 
 .idea/
 traced_model.pt
@@ -39,5 +21,4 @@ utils/TubeDETR/models/checkpoints/*
 !utils/TubeDETR/models/checkpoints/.gitkeep
 
 weights/*
-!weights/.gitkeep
 

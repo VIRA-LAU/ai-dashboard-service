@@ -44,6 +44,7 @@ cd utils/TubeDETR/models/checkpoints/
 gdown https://drive.google.com/uc?id=1GqYjnad42-fri1lxSmT0vFWwYez6_iOv
 mv vidstgk4res352.pth vidstg_k4.pth
 cd ~
+mkdir weights
 
 cd datasets/
 mkdir videos_input
