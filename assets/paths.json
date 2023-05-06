@@ -1,5 +1,7 @@
 {
   "videos_input_path": "datasets/videos_input/",
+  "temporal_videos_input_path": "datasets/videos_temporal_input/",
+  "temporal_frames": "datasets/videos_temporal_frames/",
   "videos_inferred_path": "datasets/videos_inferred/",
   "bbox_coordinates_path": "datasets/bbox_coord/",
   "keys_path": "assets/keys.json",
