@@ -72,7 +72,7 @@ def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, na
 def detect_pose(weights: str = 'yolov7.pt',
            source: str = 'inference/images',
            img_size: int = 640,
-           conf_thresh: float = 0.25,
+           conf_thresh: float = 0.6,
            iou_thresh: float = 0.45,
            device: str = '',
            view_img: bool = False,
@@ -185,7 +185,7 @@ def detect_pose(weights: str = 'yolov7.pt',
         t1 = time_synchronized()
         pred = model(img, augment=augment)[0]
         t2 = time_synchronized()
-        pred = non_max_suppression_kpt(pred, 0.25, 0.65, nc=model.yaml['nc'], nkpt=model.yaml['nkpt'], kpt_label=True)
+        pred = non_max_suppression_kpt(pred, conf_thresh, iou_thresh, nc=model.yaml['nc'], nkpt=model.yaml['nkpt'], kpt_label=True)
         t3 = time_synchronized()
         
         output = output_to_keypoint(pred)
@@ -282,9 +282,9 @@ def detect_pose(weights: str = 'yolov7.pt',
                         plot_kpts(im0, kpts=kpts, steps=3, orig_shape=im0.shape[:2])
 
                     # NOTE: We send in detected object class too
-                        for x1, y1, x2, y2, conf, detclass in det.cpu().detach().numpy():
-                            if detclass == 0.0:
-                                dets_to_sort = np.vstack((dets_to_sort, np.array([x1, y1, x2, y2, conf, detclass])))
+                        for element in det.cpu().detach().numpy():
+                            if element[5] == 0.0:
+                                dets_to_sort = np.vstack((dets_to_sort, np.array([element[0], element[1], element[2], element[3], element[4], element[5]])))
                             #df_log = df_log.append({'player_id' : dets_to_sort[0][-1]}, ignore_index = True)
 
                     if track:
