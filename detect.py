@@ -866,7 +866,6 @@ def detect_all(source: str = 'datasets/videos_input/'):
             strip_optimizer(basket_weights)
             video_path, txt_path = detect_pose(weights=pose_weights, source=source + str(vid))
             strip_optimizer(pose_weights)
-            # strip_optimizer(weights)
         print(video_path)
     return video_path, txt_path, frames_shot_made, shotsmade
     
