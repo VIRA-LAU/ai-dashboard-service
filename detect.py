@@ -302,8 +302,7 @@ def detect_pose(weights: str = 'yolov7.pt',
                             confidences = None
                             for entry in tracked_dets:
                                 dataLogFile[frame]['pose_detection_' + str(index)] = label
-                                dataLogFile[frame]['player_' + str(entry[-1])[0] + '_bbox_coords_' + str(index)] = [xyxy[0].item(), xyxy[1].item(),
-                                                                               xyxy[2].item(), xyxy[3].item()]
+                                dataLogFile[frame]['player_' + str(entry[-1])[0] + '_bbox_coords_' + str(index)] = [int(entry[0]) , int(entry[1]), int(entry[2]), int(entry[3])]
                                 dataLogFile[frame]['player_' + str(entry[-1])[0] + '_feet_coords_' + str(index)] = xy[-1]
                                 dataLogFile[frame]['player_' + str(entry[-1])[0] + '_position_' + str(index)] = position
                                 index += 1

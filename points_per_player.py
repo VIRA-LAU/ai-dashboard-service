@@ -16,22 +16,23 @@ for frame in data:
                                 index = frameInfo[-1]
                                 shooting_coords = data[frame]['action_bbox_coords_' + index]
                                 playerCoords = None
+                                playerNum = 0
                                 for stat in data[frame]:
                                         pattern = r'player_\d+_bbox_coords_\d+'
                                         if re.match(pattern, stat):
                                                 currentCoords = data[frame][stat]
-                                                print(currentCoords)
-                                                print(shooting_coords)
                                                 check = []
                                                 for i in range(len(shooting_coords)):
                                                         check.append(min(currentCoords[i], shooting_coords[i])/ max(currentCoords[i], shooting_coords[i]) >= PERSON_ACTION_PRECISION)
-                                                print(check)
-
-                                # if len(framesWithShootingPlayer) == 0:
-                                #         framesWithShootingPlayer.append({'frame' : frame, 'index' : frameInfo[-1]})
-                                # elif frame - framesWithShootingPlayer[-1]['frame'] >= NUMBER_OF_FRAMES_PER_SHOOTING:
-                                #         framesWithShootingPlayer.append(frame)
-print(framesWithShootingPlayer)
+                                                if all(check):
+                                                        playerCoords = currentCoords
+                                                        playerNum = stat[stat.find('_') + 1]
+                                                        break
+                                if playerCoords is not None and playerNum != 0:
+                                        if len(framesWithShootingPlayer) == 0:
+                                                framesWithShootingPlayer.append({'frame' : frame, 'index' : frameInfo[-1], 'playerNum' : playerNum})
+                                        elif frame - framesWithShootingPlayer[-1]['frame'] >= NUMBER_OF_FRAMES_PER_SHOOTING:
+                                                framesWithShootingPlayer.append({'frame' : frame, 'index' : frameInfo[-1], 'playerNum' : playerNum})
 for frameObject in framesWithShootingPlayer:
         frameNum = frameObject['frame']
         index = frameObject['index']
@@ -47,9 +48,8 @@ for frameObject in framesWithShootingPlayer:
                                         for detection in data[frame]:
                                                 if detection.endswith('_position_' + index):
                                                      playerPoints = 2 if data[frame][detection] == '2_points' else 3
-                                                     playerNum = detection[detection.find('_') + 1]
-                                        if playerPoints != 0 and playerNum != 0:
-                                                playerIdentifier = 'Player ' + playerNum
+                                        if playerPoints != 0:
+                                                playerIdentifier = 'Player ' + frameObject['playerNum']
                                                 if playerIdentifier not in pointsForAllPlayers.keys():
                                                         pointsForAllPlayers[playerIdentifier] = 0
                                                 pointsForAllPlayers[playerIdentifier] += playerPoints
