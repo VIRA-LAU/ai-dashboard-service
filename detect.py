@@ -302,10 +302,10 @@ def detect_pose(weights: str = 'yolov7.pt',
                             confidences = None
                             for entry in tracked_dets:
                                 dataLogFile[frame]['pose_detection_' + str(index)] = label
-                                dataLogFile[frame]['player_' + str(entry[-1]) + '_bbox_coords_' + str(index)] = [xyxy[0].item(), xyxy[1].item(),
+                                dataLogFile[frame]['player_' + str(entry[-1])[0] + '_bbox_coords_' + str(index)] = [xyxy[0].item(), xyxy[1].item(),
                                                                                xyxy[2].item(), xyxy[3].item()]
-                                dataLogFile[frame]['player_' + str(entry[-1]) + '_feet_coords_' + str(index)] = xy[-1]
-                                dataLogFile[frame]['player_' + str(entry[-1]) + '_position_' + str(index)] = position
+                                dataLogFile[frame]['player_' + str(entry[-1])[0] + '_feet_coords_' + str(index)] = xy[-1]
+                                dataLogFile[frame]['player_' + str(entry[-1])[0] + '_position_' + str(index)] = position
                                 index += 1
 
                             '''loop over tracks'''
@@ -774,8 +774,8 @@ def detect_actions(weights: str = 'yolov7.pt',
                         label = names[int(cls)]
                         if frame not in dataLogFile:
                             dataLogFile[frame] = {}
-                        dataLogFile[frame]['action_detection_' + str(index)] = label
-                        dataLogFile[frame]['action_bbox_coords_' + str(index)] = [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]
+                        dataLogFile[frame]['action_detection_' + str(index)[0]] = label
+                        dataLogFile[frame]['action_bbox_coords_' + str(index)[0]] = [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]
                         index += 1
 
                     dets_to_sort = np.empty((0, 6))
