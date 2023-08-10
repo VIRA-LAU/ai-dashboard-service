@@ -4,7 +4,7 @@ player_scores = {
     'Player 3': {'scored': 5, 'missed': 0},
     'Player 4': {'scored': 10, 'missed': 0},
     'Player 5': {'scored': 7, 'missed': 0},
-    'Player 6': {'scored': 12, 'missed': 0}
+    'Player 6': {'scored': 11, 'missed': 0}
 }
 team1 = [1, 3, 6]
 team2 = [2, 4, 5]
