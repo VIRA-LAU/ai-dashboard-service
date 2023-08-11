@@ -2,6 +2,7 @@ import time
 from pathlib import Path
 import sys
 import os
+import threading
 from multiprocessing import Pool
 from datetime import datetime
 
@@ -25,8 +26,8 @@ from persistence.repositories import paths
 from player_shots import getPointsPerPlayer
 from shots_missed import getShotsMissedPerPlayer
 
-dataLogFile = {}
 dataLogFilePath = 'datasets/logs/'
+dataLogFile = {}
 def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, names=None, colors=None, points = {}, missed = {}):
     """
     Function to Draw Bounding boxes when tracking
@@ -97,6 +98,7 @@ def detect_pose(weights: str = 'yolov7.pt',
     :param track: track people in videos
     :return: vid_path, txt_path
     """
+    global dataLogFile
     time.sleep(5)
     print("weigths: ", weights)
     # print(source)
@@ -301,6 +303,8 @@ def detect_pose(weights: str = 'yolov7.pt',
                             categories = tracked_dets[:, 4]
                             confidences = None
                             for entry in tracked_dets:
+                                if frame not in dataLogFile:
+                                    dataLogFile[frame] = {}
                                 dataLogFile[frame]['pose_detection_' + str(index)] = label
                                 dataLogFile[frame]['player_' + str(entry[-1])[0] + '_bbox_coords_' + str(index)] = [int(entry[0]) , int(entry[1]), int(entry[2]), int(entry[3])]
                                 dataLogFile[frame]['player_' + str(entry[-1])[0] + '_feet_coords_' + str(index)] = xy[-1]
@@ -332,6 +336,8 @@ def detect_pose(weights: str = 'yolov7.pt',
 
                 # Add frame with no detections in logs
                 else:
+                    if frame not in dataLogFile:
+                        dataLogFile[frame] = {}
                     dataLogFile[frame]['pose_detection_' + str(index)] = ''
                     dataLogFile[frame]['player_' + 'None' + '_bbox_coords_' + str(index)] = ''
                     dataLogFile[frame]['player_' + 'None' + '_feet_coords_' + str(index)] = ''
@@ -393,6 +399,7 @@ def detect_basketball(weights: str = 'yolov7.pt',
     :param track: track people in videos
     :return: vid_path, txt_path, frames_shot_made, shotmade
     """
+    global dataLogFile
     time.sleep(5)
     print("weigths: ", weights)
     # print(source)
@@ -554,6 +561,8 @@ def detect_basketball(weights: str = 'yolov7.pt',
                             plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1, kpt_label=False)
                         label = names[int(cls)]
 
+                        if frame not in dataLogFile:
+                            dataLogFile[frame] = {}
                         dataLogFile[frame]['basketball_detection_' + str(index)] = label
                         dataLogFile[frame]['basketball_bbox_coords_' + str(index)] = [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]
                         index += 1
@@ -566,6 +575,8 @@ def detect_basketball(weights: str = 'yolov7.pt',
                 
                 # Add frame with no detections in logs
                 else:
+                    if frame not in dataLogFile:
+                        dataLogFile[frame] = {}
                     dataLogFile[frame]['basketball_detection_' + str(index)] = ''
                     dataLogFile[frame]['basketball_bbox_coords_' + str(index)] = ''
                     index += 1
@@ -626,7 +637,7 @@ def detect_actions(weights: str = 'yolov7.pt',
     :param track: track people in videos
     :return: vid_path, txt_path, frames_shot_made, shotmade
     """
-    global dataLogFilePath, dataLogFile
+    global dataLogFile
     time.sleep(5)
     print("weigths: ", weights)
     # print(source)
@@ -821,9 +832,11 @@ def detect_actions(weights: str = 'yolov7.pt',
     
     return vid_path, txt_path
 def writeToLog():
+    global dataLogFile
     with open(dataLogFilePath, 'w') as file:
         yaml.dump(dataLogFile, file)
 def readFromLog():
+    global dataLogFile
     with open(dataLogFilePath, 'r') as file:
         dataLogFile = yaml.safe_load(file)
 
@@ -866,7 +879,35 @@ def detect_all(source: str = 'datasets/videos_input/'):
             writeToLog()
         print(video_path)
     return video_path, txt_path, frames_shot_made, shotsmade
-    
+def detect_all_multithreads(source: str = 'datasets/videos_input/'):
+    global dataLogFilePath
+    for vid in os.listdir(source):
+        torch.cuda.empty_cache()
+        with torch.no_grad():
+            action_weights = 'weights/actions_2.pt'
+            basket_weights = 'weights/net_hoop_basket_combined_april.pt'
+            pose_weights = 'weights/yolov7-w6-pose.pt'
+            dataLogFilePath += os.path.splitext(vid)[0] + '_log.yaml'
+            with open(dataLogFilePath, 'w') as file:
+                yaml.dump({}, file)
+            threads = []
+            thread1 = threading.Thread(target=detect_actions,
+                                       kwargs= {'weights' : action_weights, 'source' : source + str(vid)})
+            threads.append(thread1)
+            thread1.start()
+            thread2 = threading.Thread(target=detect_basketball,
+                                       kwargs={'weights': basket_weights, 'source': source + str(vid)})
+            threads.append(thread2)
+            thread2.start()
+
+            thread3 = threading.Thread(target=detect_pose,
+                                       kwargs={'weights': pose_weights, 'source': source + str(vid)})
+            threads.append(thread3)
+            thread3.start()
+            # Wait for all threads to complete
+            for thread in threads:
+                thread.join()
+            writeToLog()
 if __name__ == '__main__':
     detect_all()
 
