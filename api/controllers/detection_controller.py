@@ -1,5 +1,6 @@
 from fastapi import APIRouter, UploadFile, File
 
+import detect
 from containers import Services
 from core.song_player import give_song
 from core.video_splitter import video_splitter
@@ -33,6 +34,12 @@ async def run_inference_on_video(video: UploadFile = File(...)) -> ApiResponse:
         "Number of Shots Made": shots_made
     })
 
+@router.get('/Detection_Stats')
+async def run_stats_inference_on_video(video: UploadFile = File(...)) -> ApiResponse:
+    path_input_video = save_video(video=video, destination=str(paths.video_input_path))
+    filename = video.filename
+    stats = detect.detect_all(path_input_video)
+    return ApiResponse(success=True, data= stats)
 
 @router.get("/Detection_Inference")
 async def fetch_run_inference(path: str) -> ApiResponse:

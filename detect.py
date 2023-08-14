@@ -1,10 +1,7 @@
-import time
-from pathlib import Path
-import sys
 import os
 import threading
-from multiprocessing import Pool
-from datetime import datetime
+import time
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -12,19 +9,19 @@ import pandas as pd
 import torch
 import yaml
 from numpy import random
-
-from torchvision import transforms
+import getstats
 
 from models.experimental import attempt_load
-from sort import Sort
-from utils.datasets import LoadImages,letterbox
-from utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging, xyxy2xywh, non_max_suppression_kpt
-from utils.plots import plot_one_box, output_to_keypoint, plot_skeleton_kpts, colors, plot_one_box_kpt, plot_kpts
-from utils.torch_utils import select_device, time_synchronized, TracedModel
-from utils.TubeDETR import stvg
 from persistence.repositories import paths
 from player_shots import getPointsPerPlayer
 from shots_missed import getShotsMissedPerPlayer
+from sort import Sort
+from utils.TubeDETR import stvg
+from utils.datasets import LoadImages
+from utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging, xyxy2xywh, \
+    non_max_suppression_kpt
+from utils.plots import plot_one_box, output_to_keypoint, plot_kpts
+from utils.torch_utils import select_device, time_synchronized, TracedModel
 
 dataLogFilePath = 'datasets/logs/'
 dataLogFile = {}
@@ -877,8 +874,17 @@ def detect_all(source: str = 'datasets/videos_input/'):
             video_path, txt_path = detect_pose(weights=pose_weights, source=source + str(vid))
             strip_optimizer(pose_weights)
             writeToLog()
-        print(video_path)
-    return video_path, txt_path, frames_shot_made, shotsmade
+            pointsPerPlayer = getstats.getPointsPerPlayer(dataLogFilePath)
+            pointsPerTeam = getstats.getPointsPerTeam(pointsPerPlayer, [1], [2])
+            possessionPerTeam = getstats.getPossessionPerTeam(dataLogFilePath)
+            stats = {
+                'Video path' : video_path,
+                'Player points' : pointsPerPlayer,
+                'Team 1 points' : pointsPerTeam['Team 1'],
+                'Team 2 points' : pointsPerTeam['Team 2'],
+                'Possession' : possessionPerTeam
+            }
+    return stats
 def detect_all_multithreads(source: str = 'datasets/videos_input/'):
     global dataLogFilePath
     for vid in os.listdir(source):
@@ -909,7 +915,7 @@ def detect_all_multithreads(source: str = 'datasets/videos_input/'):
                 thread.join()
             writeToLog()
 if __name__ == '__main__':
-    detect_all()
+    print(detect_all())
 
     '''For parallel processing: '''
 
