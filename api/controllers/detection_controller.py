@@ -35,10 +35,9 @@ async def run_inference_on_video(video: UploadFile = File(...)) -> ApiResponse:
     })
 
 @router.get('/Detection_Stats')
-async def run_stats_inference_on_video(video: UploadFile = File(...)) -> ApiResponse:
-    path_input_video = save_video(video=video, destination=str(paths.video_input_path))
-    filename = video.filename
-    stats = detect.detect_all(path_input_video)
+async def run_stats_inference_on_video(path: str) -> ApiResponse:
+    #path_input_video, filename = download_video(video_url_input=path)
+    stats = detect.detect_all()
     return ApiResponse(success=True, data= stats)
 
 @router.get("/Detection_Inference")

@@ -248,3 +248,7 @@ def get_video_name(video_title: str):
             file_path = os.path.join('datasets/videos_input', file_name)
             return file_path
     return None
+
+if __name__ == '__main__':
+    print(getPointsPerPlayer('datasets/logs/04181_log.yaml'))
+    print(getPossessionPerTeam('datasets/logs/04181_log.yaml'))
