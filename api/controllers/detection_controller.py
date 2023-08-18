@@ -39,6 +39,16 @@ async def run_stats_inference_on_video(path: str) -> ApiResponse:
     path_input_video, filename = download_video(video_url_input=path)
     stats = detect.detect_all()
     return ApiResponse(success=True, data= stats)
+@router.get('/Dummy_Endpoint')
+async def get_dummy_stats() -> ApiResponse:
+    return ApiResponse(success=True, data= {
+        'Player_1' : {
+            '2_points' : 2,
+            '3_points' : 1
+        },
+        'Team_1_points' : 10,
+        'Team_2_points' : 5
+    })
 
 @router.get("/Detection_Inference")
 async def fetch_run_inference(path: str) -> ApiResponse:
