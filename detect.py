@@ -23,7 +23,6 @@ from utils.general import check_img_size, non_max_suppression, scale_coords, str
 from utils.plots import plot_one_box, output_to_keypoint, plot_kpts
 from utils.torch_utils import select_device, time_synchronized, TracedModel
 
-dataLogFilePath = 'datasets/logs/'
 dataLogFile = {}
 def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, names=None, colors=None, points = {}, missed = {}):
     """
@@ -855,10 +854,10 @@ def run_detect(data):
         torch.cuda.empty_cache()
         
 def detect_all(source: str = 'datasets/videos_input/'):
-    global dataLogFilePath
     for vid in os.listdir(source):
         torch.cuda.empty_cache()
         with torch.no_grad():
+            dataLogFilePath = 'datasets/logs/'
             action_weights = 'weights/actions_2.pt'
             basket_weights = 'weights/net_hoop_basket_combined_april.pt'
             pose_weights = 'weights/yolov7-w6-pose.pt'
