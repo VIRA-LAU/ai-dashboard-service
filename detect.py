@@ -60,7 +60,7 @@ def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, na
             shotsMissed = missed[id]
         label = str(id) + ": " + f'{numPoints} Scored, ' + f'{shotsMissed} Missed'
         # label = str(id) + ":" + names[cat] if identities is not None else f'{names[cat]} {confidences[i]:.2f}'
-        print(label)
+        #print(label)
         tf = max(tl - 1, 1)  # font thickness
         t_size = cv2.getTextSize(label, 0, fontScale=tl / 3, thickness=tf)[0]
         c2 = x1 + t_size[0], y1 - t_size[1] - 3
