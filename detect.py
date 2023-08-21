@@ -835,6 +835,33 @@ def readFromLog():
     global dataLogFile
     with open(dataLogFilePath, 'r') as file:
         dataLogFile = yaml.safe_load(file)
+def populateStats(team1: list, team2: list, video_path: str,
+                  pointsPerPlayer: dict, pointsPerTeam: dict, possessionPerTeam: dict):
+    team1Players = []
+    team2Players = []
+    for player in pointsPerPlayer:
+        if int(player[-1]) in team1:
+            team1.append(
+                {player : pointsPerPlayer[player]}
+            )
+        if int(player[-1]) in team2:
+            team2.append(
+                {player : pointsPerPlayer[player]}
+            )
+    return {
+        'video_path' : video_path,
+        'team_1' : {
+            'players' : team1Players,
+            'points' : pointsPerTeam['team_1'],
+            'possession' : possessionPerTeam['team_1_possession']
+        },
+        'team_2' : {
+            'players' : team2Players,
+            'points' : pointsPerTeam['team_2'],
+            'possession' : possessionPerTeam['team_1_possession']
+        }
+    }
+
 
 def run_detect(data):
     weights = data[0]
@@ -853,7 +880,7 @@ def run_detect(data):
         print(video_path)
         torch.cuda.empty_cache()
         
-def detect_all(source: str = 'datasets/videos_input/'):
+def detect_all(team1: list, team2: list, source: str = 'datasets/videos_input/'):
     for vid in os.listdir(source):
         torch.cuda.empty_cache()
         with torch.no_grad():
@@ -874,18 +901,13 @@ def detect_all(source: str = 'datasets/videos_input/'):
             strip_optimizer(pose_weights)
             writeToLog()
             pointsPerPlayer = getstats.getPointsPerPlayer(dataLogFilePath)
-            pointsPerTeam = getstats.getPointsPerTeam(pointsPerPlayer, [1], [2])
+            pointsPerTeam = getstats.getPointsPerTeam(pointsPerPlayer, team1, team2)
             possessionPerTeam = getstats.getPossessionPerTeam(dataLogFilePath)
-            stats = {
-                'Video path' : video_path,
-                'Player points' : pointsPerPlayer,
-                'Team 1 points' : pointsPerTeam['Team 1'],
-                'Team 2 points' : pointsPerTeam['Team 2'],
-                'Possession' : possessionPerTeam
-            }
+            stats = populateStats(team1, team2, source + str(vid), pointsPerPlayer, pointsPerTeam, possessionPerTeam)
+
     return stats
 def detect_all_multithreads(source: str = 'datasets/videos_input/'):
-    global dataLogFilePath
+    global dataLogFilePath, dataLogFile
     for vid in os.listdir(source):
         torch.cuda.empty_cache()
         with torch.no_grad():
@@ -893,6 +915,7 @@ def detect_all_multithreads(source: str = 'datasets/videos_input/'):
             basket_weights = 'weights/net_hoop_basket_combined_april.pt'
             pose_weights = 'weights/yolov7-w6-pose.pt'
             dataLogFilePath += os.path.splitext(vid)[0] + '_log.yaml'
+            dataLogFile = {}
             with open(dataLogFilePath, 'w') as file:
                 yaml.dump({}, file)
             threads = []
@@ -914,7 +937,7 @@ def detect_all_multithreads(source: str = 'datasets/videos_input/'):
                 thread.join()
             writeToLog()
 if __name__ == '__main__':
-    print(detect_all())
+    print(detect_all(team1=[1], team2=[2]))
 
     '''For parallel processing: '''
 

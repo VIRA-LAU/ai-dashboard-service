@@ -39,8 +39,8 @@ def getPossessionPerTeam(logFileDirectory: str):
     possession_team_1 = round(team1_frames * 100 / total_frames, 1)
     possession_team_2 = round(team2_frames * 100 / total_frames, 1)
     return {
-        'Team 1 possession' : f'{possession_team_1} %',
-        'Team 2 possession' : f'{possession_team_2} %'
+        'team_1_possession' : f'{possession_team_1} %',
+        'team_2_possession' : f'{possession_team_2} %'
     }
 
 def getPointsPerPlayer(logFileDirectory: str):
@@ -64,7 +64,7 @@ def getPointsPerPlayer(logFileDirectory: str):
         index = frameObject['index']
         pointLogged = False
         for frame in range(frameNum, frameNum + NETBASKET_FRAMES_AFTER_SHOOTING):
-            playerIdentifier = 'Player ' + frameObject['playerNum']
+            playerIdentifier = 'player_' + frameObject['playerNum']
             if pointLogged:
                 break
             for frameInfo in data[frame]:
@@ -86,8 +86,8 @@ def getPointsPerTeam(player_scores: dict, team1_players: list, team2_players: li
         if playerNum in team2_players:
             team2Points += player_scores[player]['scored']
     return {
-        'Team 1' : team1Points,
-        'Team 2' : team2Points
+        'team_1' : team1Points,
+        'team_2' : team2Points
     }
 
 def getBasketballCoords(frame: int):
