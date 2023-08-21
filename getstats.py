@@ -46,6 +46,7 @@ def getPossessionPerTeam(logFileDirectory: str):
 def getPointsPerPlayer(logFileDirectory: str):
     global data, framesWithShootingPlayer, pointsForAllPlayers
     video_fps = get_video_framerate(logFileDirectory)
+    frames_point_scored = []
     NUMBER_OF_FRAMES_PER_SHOOTING = video_fps * 2
     NETBASKET_FRAMES_AFTER_SHOOTING = video_fps * 3
     with open(logFileDirectory, 'r') as file:
@@ -69,11 +70,11 @@ def getPointsPerPlayer(logFileDirectory: str):
                 break
             for frameInfo in data[frame]:
                 if frameInfo.startswith('basketball_detection'):
-                    pointLogged = addPointToPlayer(frame, frameInfo, playerIdentifier, index)
+                    pointLogged = addPointToPlayer(frame, frames_point_scored, frameInfo, playerIdentifier, index)
                     if pointLogged:
                         break
         addMissedPointToPlayer(playerIdentifier, pointLogged)
-    return pointsForAllPlayers
+    return pointsForAllPlayers, frames_point_scored
 
 
 def getPointsPerTeam(player_scores: dict, team1_players: list, team2_players: list):
@@ -194,7 +195,7 @@ def addShootingPlayerToGlobalMap(frame: int,
                 {'frame': frame, 'index': index, 'playerNum': playerNum})
 
 
-def addPointToPlayer(frame: int, frameInfo: str, playerIdentifier: str, index: str):
+def addPointToPlayer(frame: int, frames_point_scored: list, frameInfo: str, playerIdentifier: str, index: str):
     if frameInfo.startswith('basketball_detection'):
         if data[frame][frameInfo] == 'netbasket':
             playerPoints = 0
@@ -205,6 +206,7 @@ def addPointToPlayer(frame: int, frameInfo: str, playerIdentifier: str, index: s
                 if playerIdentifier not in pointsForAllPlayers.keys():
                     pointsForAllPlayers[playerIdentifier] = {'scored': 0, 'missed': 0}
                 pointsForAllPlayers[playerIdentifier]['scored'] += playerPoints
+                frames_point_scored.append(frame)
                 return True
     return False
 
@@ -250,5 +252,5 @@ def get_video_name(video_title: str):
     return None
 
 if __name__ == '__main__':
-    print(getPointsPerPlayer('datasets/logs/04181_log.yaml'))
+    pointsPerPlayer = getPointsPerPlayer('datasets/logs/04181_log.yaml')[0]
     print(getPossessionPerTeam('datasets/logs/04181_log.yaml'))

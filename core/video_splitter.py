@@ -21,6 +21,7 @@ def video_splitter(path_to_video: str, frames_shot_made: list) -> list:
     print(fps)
     filename = os.path.split(path_to_video)[1]
     filename = filename.split('.', 1)[0]
+    os.makedirs(paths.highlights_path, exist_ok=True)
     for counter, frame in enumerate(frames_shot_made):
         filename_with_counter = filename + "_" + str(counter) + ".mp4"
         clip = video.subclip(max(int(frame / fps - before), 0), min(int(frame / fps + after), video.duration))

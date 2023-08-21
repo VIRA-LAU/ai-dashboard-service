@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, UploadFile, File, BackgroundTasks
 
 import detect
 from containers import Services
@@ -34,10 +34,10 @@ async def run_inference_on_video(video: UploadFile = File(...)) -> ApiResponse:
         "Number of Shots Made": shots_made
     })
 
-@router.get('/Detection_Stats')
-async def run_stats_inference_on_video(path: str) -> ApiResponse:
-    path_input_video, filename = download_video(video_url_input=path)
-    stats = detect.detect_all()
+@router.get('/Run_Inference_On_Existing_Input_Videos')
+async def run_inference_on_existing_input_videos() -> ApiResponse:
+    #path_input_video, filename = download_video(video_url_input=path)
+    stats, video_inferred_path, videos_paths, concatenated, concatenated_with_music, shots_made = detection_service.run_inference('datasets/videos_input/04183.mp4', '04183.mp4')
     return ApiResponse(success=True, data= stats)
 @router.get('/Dummy_Endpoint')
 async def get_dummy_stats() -> ApiResponse:

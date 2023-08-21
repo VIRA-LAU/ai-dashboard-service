@@ -24,6 +24,7 @@ from utils.plots import plot_one_box, output_to_keypoint, plot_kpts
 from utils.torch_utils import select_device, time_synchronized, TracedModel
 
 dataLogFile = {}
+dataLogFilePath = ''
 def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, names=None, colors=None, points = {}, missed = {}):
     """
     Function to Draw Bounding boxes when tracking
@@ -404,7 +405,7 @@ def detect_basketball(weights: str = 'yolov7.pt',
     ##################################################################################################################################################
     '''Variables for counting the shots made'''
     frames_shot_made: list = []
-    NUMBER_OF_FRAMES_AFTER_SHOT_MADE = 5
+    NUMBER_OF_FRAMES_AFTER_SHOT_MADE = 10
     shotmade = 0
     history = []
     for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
@@ -828,11 +829,11 @@ def detect_actions(weights: str = 'yolov7.pt',
     
     return vid_path, txt_path
 def writeToLog():
-    global dataLogFile
+    global dataLogFile, dataLogFilePath
     with open(dataLogFilePath, 'w') as file:
         yaml.dump(dataLogFile, file)
 def readFromLog():
-    global dataLogFile
+    global dataLogFile, dataLogFilePath
     with open(dataLogFilePath, 'r') as file:
         dataLogFile = yaml.safe_load(file)
 def populateStats(team1: list, team2: list, video_path: str,
@@ -841,11 +842,11 @@ def populateStats(team1: list, team2: list, video_path: str,
     team2Players = []
     for player in pointsPerPlayer:
         if int(player[-1]) in team1:
-            team1.append(
+            team1Players.append(
                 {player : pointsPerPlayer[player]}
             )
         if int(player[-1]) in team2:
-            team2.append(
+            team2Players.append(
                 {player : pointsPerPlayer[player]}
             )
     return {
@@ -858,7 +859,7 @@ def populateStats(team1: list, team2: list, video_path: str,
         'team_2' : {
             'players' : team2Players,
             'points' : pointsPerTeam['team_2'],
-            'possession' : possessionPerTeam['team_1_possession']
+            'possession' : possessionPerTeam['team_2_possession']
         }
     }
 
@@ -881,6 +882,7 @@ def run_detect(data):
         torch.cuda.empty_cache()
         
 def detect_all(team1: list, team2: list, source: str = 'datasets/videos_input/'):
+    global dataLogFilePath
     for vid in os.listdir(source):
         torch.cuda.empty_cache()
         with torch.no_grad():
@@ -900,12 +902,13 @@ def detect_all(team1: list, team2: list, source: str = 'datasets/videos_input/')
             video_path, txt_path = detect_pose(weights=pose_weights, source=source + str(vid))
             strip_optimizer(pose_weights)
             writeToLog()
-            pointsPerPlayer = getstats.getPointsPerPlayer(dataLogFilePath)
+            video_path = source + str(vid)
+            pointsPerPlayer, frames_point_scored = getstats.getPointsPerPlayer(dataLogFilePath)
             pointsPerTeam = getstats.getPointsPerTeam(pointsPerPlayer, team1, team2)
             possessionPerTeam = getstats.getPossessionPerTeam(dataLogFilePath)
-            stats = populateStats(team1, team2, source + str(vid), pointsPerPlayer, pointsPerTeam, possessionPerTeam)
+            stats = populateStats(team1, team2, video_path, pointsPerPlayer, pointsPerTeam, possessionPerTeam)
+    return stats, video_path, frames_point_scored, shotsmade
 
-    return stats
 def detect_all_multithreads(source: str = 'datasets/videos_input/'):
     global dataLogFilePath, dataLogFile
     for vid in os.listdir(source):
