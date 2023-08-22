@@ -3,26 +3,28 @@ from moviepy.editor import *
 from shared.helper.json_helpers import parse_json
 
 def add_score(video, score_asset, scores):
-    x = 877
-    y = 800
+    x = 948
+    y = 845
     score_composites=[]
     frames = scores['frames']
-    for frame in frames:
-        # print(frames[frame]["team1"]["score"])
-        team1_score_text = TextClip(str(frames[frame]['team1']['score']),font="Space Grotesk Bold", fontsize=30, color='white')
-        team2_score_text = TextClip(str(frames[frame]['team2']['score']),font="Space Grotesk Bold", fontsize=30, color='white')
+    for i, frame in enumerate(frames):
+        team1_score_text = TextClip(str(frames[frame]['team1']['score']),font="SpaceGrotesk-Bold", fontsize=50, color='white')
+        team2_score_text = TextClip(str(frames[frame]['team2']['score']),font="SpaceGrotesk-Bold", fontsize=50, color='white')
 
-        # score_asset = score_asset.set_position(x,y)
-        team1_score_text = team1_score_text.set_pos((x-100,y))
-        team2_score_text = team2_score_text.set_pos((x+100,y))
+        team1_score_text = team1_score_text.set_pos((x-150,y))
+        team2_score_text = team2_score_text.set_pos((x+150,y))
 
         score_clip_composite = CompositeVideoClip([score_asset, team1_score_text, team2_score_text])
         score_clip_composite = score_clip_composite.set_start(int(frame)/30)
         score_composites.append(score_clip_composite)
 
-    score_clip = CompositeVideoClip(score_composites)
+        if(i == 0):
+            clip_duration = video.duration - int(frame)/30
 
-    video_scores = CompositeVideoClip([video, score_clip])
+    score_clip = CompositeVideoClip(score_composites)
+    score_clip.duration = clip_duration
+
+    video_scores = CompositeVideoClip([video, score_clip.crossfadein(1)])
     video_scores.duration = video.duration
     video_scores.write_videofile("datasets/post_process/exported/test.mp4", fps=30,codec='libx264')
 

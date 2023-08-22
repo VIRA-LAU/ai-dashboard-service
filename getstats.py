@@ -4,79 +4,113 @@ import yaml
 import cv2
 import os
 
-data = {}
-team1 = [1]
-team2 = [2]
-team1_frames = 0
-team2_frames = 0
+def getPossessionPerTeam(logs):
+    team1 = [1]
+    team2 = [2]
+    team1_frames = 0
+    team2_frames = 0
+    
+    basketball_detections = logs['basketball_detections']
+    pose_detections = logs['pose_detections']
 
-framesWithShootingPlayer = []
-pointsForAllPlayers = {}
-PERSON_ACTION_PRECISION = 0.92
-
-def getPossessionPerTeam(logFileDirectory: str):
-    global data, team1_frames, team2_frames
-    with open(logFileDirectory, 'r') as file:
-        data = yaml.safe_load(file)
     lastPlayerWithBall = None
-    for frame in data:
-        basketball_coords = getBasketballCoords(frame)
-        all_players_coords = getAllPlayersCoords(frame)
-        for player in all_players_coords:
-            if (checkIfPlayerHasBall(player['coords'], basketball_coords)):
-                if player['playerNum'] in team1:
+    for frame in basketball_detections:
+        basketball_coords = basketball_detections[frame]['bbox_coords']
+        for player in pose_detections[frame]:
+            player_id = pose_detections[frame][player]['player_id']
+            if (checkIfPlayerHasBall(player['bbox_coords'], basketball_coords)):
+                if player_id in team1:
                     team1_frames += 1
-                    lastPlayerWithBall = player['playerNum']
-                elif player['playerNum'] in team2:
+                    lastPlayerWithBall = player['player']
+                elif player_id in team2:
                     team2_frames += 1
-                    lastPlayerWithBall = player['playerNum']
+                    lastPlayerWithBall = player_id
                 elif lastPlayerWithBall is not None:
                     if lastPlayerWithBall in team1:
                         team1_frames += 1
                     elif lastPlayerWithBall in team2:
                         team2_frames += 1
+
     total_frames = sum([team1_frames, team2_frames])
     possession_team_1 = round(team1_frames * 100 / total_frames, 1)
     possession_team_2 = round(team2_frames * 100 / total_frames, 1)
+
     return {
         'Team 1 possession' : f'{possession_team_1} %',
         'Team 2 possession' : f'{possession_team_2} %'
     }
 
-def getPointsPerPlayer(logFileDirectory: str):
-    global data, framesWithShootingPlayer, pointsForAllPlayers
-    video_fps = get_video_framerate(logFileDirectory)
-    NUMBER_OF_FRAMES_PER_SHOOTING = video_fps * 2
-    NETBASKET_FRAMES_AFTER_SHOOTING = video_fps * 3
-    with open(logFileDirectory, 'r') as file:
-        data = yaml.safe_load(file)
-    for frame in data:
-        for frameInfo in data[frame]:
-            shooting_coords = getShootingCoords(frame, frameInfo)
-            playerCoords, playerNum, index = [None, None, None]
-            for stat in data[frame]:
-                if playerCoords is not None and playerNum is not None and index is not None:
-                    break
-                playerCoords, playerNum, index = getShootingPlayer(frame, stat, shooting_coords)
-            addShootingPlayerToGlobalMap(frame, index, playerCoords, playerNum, NUMBER_OF_FRAMES_PER_SHOOTING)
-    for frameObject in framesWithShootingPlayer:
-        frameNum = frameObject['frame']
-        index = frameObject['index']
-        pointLogged = False
-        for frame in range(frameNum, frameNum + NETBASKET_FRAMES_AFTER_SHOOTING):
-            playerIdentifier = 'Player ' + frameObject['playerNum']
-            if pointLogged:
-                break
-            for frameInfo in data[frame]:
-                if frameInfo.startswith('basketball_detection'):
-                    pointLogged = addPointToPlayer(frame, frameInfo, playerIdentifier, index)
-                    if pointLogged:
-                        break
-        addMissedPointToPlayer(playerIdentifier, pointLogged)
-    return pointsForAllPlayers
+def getShootingPlayers(logs):
+    shooting_players = []
+    # video_fps = get_video_framerate(logFileDirectory)
+    NUMBER_OF_FRAMES_PER_SHOOTING = 30 * 2
+    NETBASKET_FRAMES_AFTER_SHOOTING = 30 * 3
+    PERSON_ACTION_PRECISION = 0.92
 
+    pose_detections = logs['pose_detection']
+    actions_detections = logs['action_detection']
+    basketball_detections = logs['basketball_detection']
+    for frame in actions_detections:
+        playerNum = None
+        player_position = None
+        if(actions_detections[frame]['action']=='shooting'):
+            shooting_coords = actions_detections[frame]['bbox_coords']
+            for player in pose_detections[frame]:
+                player_id = pose_detections[frame][player]['player_id']
+                player_bbox = pose_detections[frame][player]['bbox_coords']
+                
 
-def getPointsPerTeam(player_scores: dict, team1_players: list, team2_players: list):
+                playerCoords = player_bbox
+                check = []
+                for i in range(len(shooting_coords)):
+                    check.append(min(playerCoords[i], shooting_coords[i]) /
+                                max(playerCoords[i], shooting_coords[i]) >= PERSON_ACTION_PRECISION)
+                    
+                if len(check) == 4 and all(check):
+                    player_position = pose_detections[frame][player]['position']
+                    playerNum = player_id
+
+        shot_frame = frame + NETBASKET_FRAMES_AFTER_SHOOTING
+        if(basketball_detections[shot_frame] is not None):
+            if(basketball_detections[shot_frame]['shot']=='netbasket'):
+                entry = {
+                    'frame': frame,
+                    'player': playerNum,
+                    'shot': 'netbasket',
+                    'points': 2 if player_position == '2_points' else 3
+                }
+                shooting_players.append(entry)
+            else:
+                entry = {
+                    'frame': frame,
+                    'player': playerNum,
+                    'shot': 'basket_missed',
+                    'points': 0
+                }
+                shooting_players.append(entry)
+            
+    return shooting_players
+
+def getIndividualStats(shooting_players):
+    individ = {}
+    for data in shooting_players:
+        entry = {
+            'scored': 0,
+            'missed': 0,
+            'total_points':0
+        }
+        individ[shooting_players[data]['player']].append(entry)
+
+    for data in shooting_players:
+        if(shooting_players[data]['show'] == 'basket_missed'):
+            individ[shooting_players[data]['player']]['missed']+=1
+        else:
+            individ[shooting_players[data]['player']]['scored']+=1
+            individ[shooting_players[data]['player']]['total_points']+=shooting_players[data]['points']
+
+    return individ
+
+def getPointsPerTeam(player_scores, team1_players, team2_players):
     team1Points = 0
     team2Points = 0
     for player in player_scores:
@@ -90,37 +124,8 @@ def getPointsPerTeam(player_scores: dict, team1_players: list, team2_players: li
         'Team 2' : team2Points
     }
 
-def getBasketballCoords(frame: int):
-    basketballIndex = 0
-    for frameInfo in data[frame]:
-        if frameInfo.startswith('basketball_detection'):
-            if data[frame][frameInfo] == 'basketball':
-                basketballIndex = frameInfo[-1]
-                break
-    basket_coords = 'basketball_bbox_coords_' + str(basketballIndex)
-    if basket_coords in data[frame]:
-        return data[frame][basket_coords]
-    else:
-        return [None, None, None, None]
 
-
-def getAllPlayersCoords(frame: int):
-    allPlayersCoords = []
-    for frameInfo in data[frame]:
-        pattern = r'player_\d+_bbox_coords_\d+'
-        if re.match(pattern, frameInfo):
-            playerNum = frameInfo[frameInfo.find('_') + 1]
-            currentPlayerCoords = data[frame][frameInfo]
-            allPlayersCoords.append(
-                {
-                    'playerNum': int(playerNum),
-                    'coords': currentPlayerCoords
-                }
-            )
-    return allPlayersCoords
-
-
-def checkIfPlayerHasBall(playerCoords: list, basketballCoords: list):
+def checkIfPlayerHasBall(playerCoords, basketballCoords):
     if(all(element is None for element in basketballCoords)):
         return False
     check = []
@@ -146,78 +151,11 @@ def checkIfPlayerHasBall(playerCoords: list, basketballCoords: list):
         return False
 
 
-def getCoordsRatio(coord1: int, coord2: int):
+def getCoordsRatio(coord1, coord2):
     return min(coord1, coord2) / max(coord1, coord2)
 
 
-
-
-
-
-
-def getShootingCoords(frame: int, frameInfo: str):
-    shooting_coords = []
-    if frameInfo.startswith('action_detection'):
-        if data[frame][frameInfo] == 'shooting':
-            index = frameInfo[-1]
-            shooting_coords = data[frame]['action_bbox_coords_' + index]
-    return shooting_coords
-
-
-def getShootingPlayer(frame: int, stat: str, shooting_coords: list):
-    playerInfo = [None, None, None]
-    pattern = r'player_\d+_bbox_coords_\d+'
-    if re.match(pattern, stat):
-        currentCoords = data[frame][stat]
-        check = []
-        for i in range(len(shooting_coords)):
-            check.append(min(currentCoords[i], shooting_coords[i]) /
-                         max(currentCoords[i], shooting_coords[i]) >= PERSON_ACTION_PRECISION)
-        if len(check) == 4 and all(check):
-            playerInfo[0] = currentCoords
-            playerInfo[1] = stat[stat.find('_') + 1]
-            playerInfo[2] = str(stat[-1])
-    return playerInfo
-
-
-def addShootingPlayerToGlobalMap(frame: int,
-                                 index: str,
-                                 playerCoords: list,
-                                 playerNum: str,
-                                 NUMBER_OF_FRAMES_PER_SHOOTING: int):
-    if playerCoords is not None and playerNum is not None:
-        if len(framesWithShootingPlayer) == 0:
-            framesWithShootingPlayer.append(
-                {'frame': frame, 'index': index, 'playerNum': playerNum})
-        elif frame - framesWithShootingPlayer[-1]['frame'] >= NUMBER_OF_FRAMES_PER_SHOOTING:
-            framesWithShootingPlayer.append(
-                {'frame': frame, 'index': index, 'playerNum': playerNum})
-
-
-def addPointToPlayer(frame: int, frameInfo: str, playerIdentifier: str, index: str):
-    if frameInfo.startswith('basketball_detection'):
-        if data[frame][frameInfo] == 'netbasket':
-            playerPoints = 0
-            for detection in data[frame]:
-                if detection.endswith('_position_' + index):
-                    playerPoints = 2 if data[frame][detection] == '2_points' else 3
-            if playerPoints != 0:
-                if playerIdentifier not in pointsForAllPlayers.keys():
-                    pointsForAllPlayers[playerIdentifier] = {'scored': 0, 'missed': 0}
-                pointsForAllPlayers[playerIdentifier]['scored'] += playerPoints
-                return True
-    return False
-
-
-def addMissedPointToPlayer(playerIdentifier: str, pointLogged: bool):
-    if not pointLogged:
-        if playerIdentifier not in pointsForAllPlayers.keys():
-            pointsForAllPlayers[playerIdentifier] = {'scored': 0, 'missed': 0}
-        if playerIdentifier is not None and playerIdentifier in pointsForAllPlayers.keys():
-            pointsForAllPlayers[playerIdentifier]['missed'] += 1
-
-
-def get_video_framerate(video_path: str):
+def get_video_framerate(video_path):
     video_name = os.path.splitext(os.path.basename(video_path))[0].split('_')[0]
     video_extension = None
     if video_name is not None:
@@ -241,10 +179,25 @@ def get_video_framerate(video_path: str):
     return 0
 
 
-def get_video_name(video_title: str):
+def get_video_name(video_title):
     for file_name in os.listdir('datasets/videos_input'):
         if file_name.startswith(video_title):
             # Found a file with the desired name
             file_path = os.path.join('datasets/videos_input', file_name)
             return file_path
     return None
+
+if __name__ == "__main__":
+    logs_path = 'datasets/logs/test_log.yaml'
+    logs = yaml.safe_load(logs_path)
+
+    possession = getPossessionPerTeam(logs)
+    shooting_players = getShootingPlayers(logs)
+    individual_stats = getIndividualStats(shooting_players)
+
+    print(possession)
+    print("#######################################")
+    print(shooting_players)
+    print("#######################################")
+    print(individual_stats)
+    print("#######################################")
