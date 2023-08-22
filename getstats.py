@@ -102,7 +102,7 @@ def getIndividualStats(shooting_players):
         individ[shooting_players[data]['player']].append(entry)
 
     for data in shooting_players:
-        if(shooting_players[data]['show'] == 'basket_missed'):
+        if(shooting_players[data]['shot'] == 'basket_missed'):
             individ[shooting_players[data]['player']]['missed']+=1
         else:
             individ[shooting_players[data]['player']]['scored']+=1

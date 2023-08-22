@@ -13,9 +13,6 @@ import getstats
 
 from models.experimental import attempt_load
 from persistence.repositories import paths
-from player_shots import getPointsPerPlayer
-from shots_missed import getShotsMissedPerPlayer
-from sort import Sort
 from utils.TubeDETR import stvg
 from utils.datasets import LoadImages
 from utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging, xyxy2xywh, non_max_suppression_kpt
@@ -125,9 +122,6 @@ def detect_pose(weights: str = 'yolov7.pt',
     set_logging()
     device = select_device(device)
     half = device.type != 'cpu'  # half precision only supported on CUDA
-    sort_tracker = Sort(max_age=5,
-                        min_hits=2,
-                        iou_threshold=0.2)
     pose_logs={
         'pose_detection': {}
     }
@@ -456,9 +450,6 @@ def detect_basketball(weights: str = 'yolov7.pt',
     set_logging()
     device = select_device(device)
     half = device.type != 'cpu'  # half precision only supported on CUDA
-    sort_tracker = Sort(max_age=5,
-                        min_hits=2,
-                        iou_threshold=0.2)
     basketball_logs = {
         'basketball_detection': {}
     }
@@ -680,9 +671,6 @@ def detect_actions(weights: str = 'yolov7.pt',
     set_logging()
     device = select_device(device)
     half = device.type != 'cpu'  # half precision only supported on CUDA
-    sort_tracker = Sort(max_age=5,
-                        min_hits=2,
-                        iou_threshold=0.2)
     actions_logs={
         'action_detection': {}
     }
