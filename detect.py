@@ -1,30 +1,32 @@
-import time
-from pathlib import Path
-import sys
 import os
-from multiprocessing import Pool
-from datetime import datetime
+import pathlib
+import threading
+import time
+import shutil
+from pathlib import Path
 
 import cv2
 import numpy as np
 import pandas as pd
 import torch
+import yaml
 from numpy import random
-
-from torchvision import transforms
+import getstats
 
 from models.experimental import attempt_load
-from sort import Sort
-from utils.datasets import LoadImages,letterbox
-from utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging, xyxy2xywh, non_max_suppression_kpt
-from utils.plots import plot_one_box, output_to_keypoint, plot_skeleton_kpts, colors, plot_one_box_kpt, plot_kpts
-from utils.torch_utils import select_device, time_synchronized, TracedModel
-from utils.TubeDETR import stvg
 from persistence.repositories import paths
 from player_shots import getPointsPerPlayer
 from shots_missed import getShotsMissedPerPlayer
+from sort import Sort
+from utils.TubeDETR import stvg
+from utils.datasets import LoadImages
+from utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging, xyxy2xywh, \
+    non_max_suppression_kpt
+from utils.plots import plot_one_box, output_to_keypoint, plot_kpts
+from utils.torch_utils import select_device, time_synchronized, TracedModel
 
-
+dataLogFile = {}
+dataLogFilePath = ''
 def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, names=None, colors=None, points = {}, missed = {}):
     """
     Function to Draw Bounding boxes when tracking
@@ -60,7 +62,7 @@ def draw_boxes(img, bbox, identities=None, categories=None, confidences=None, na
             shotsMissed = missed[id]
         label = str(id) + ": " + f'{numPoints} Scored, ' + f'{shotsMissed} Missed'
         # label = str(id) + ":" + names[cat] if identities is not None else f'{names[cat]} {confidences[i]:.2f}'
-        print(label)
+        #print(label)
         tf = max(tl - 1, 1)  # font thickness
         t_size = cv2.getTextSize(label, 0, fontScale=tl / 3, thickness=tf)[0]
         c2 = x1 + t_size[0], y1 - t_size[1] - 3
@@ -95,6 +97,7 @@ def detect_pose(weights: str = 'yolov7.pt',
     :param track: track people in videos
     :return: vid_path, txt_path
     """
+    global dataLogFile
     time.sleep(5)
     print("weigths: ", weights)
     # print(source)
@@ -213,6 +216,7 @@ def detect_pose(weights: str = 'yolov7.pt',
 
                 gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
                 dets_to_sort = np.empty((0, 6))
+                index = 0
                 if len(det):
                     '''Rescale boxes from img_size to im0 size'''
                     det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False).round()
@@ -298,16 +302,13 @@ def detect_pose(weights: str = 'yolov7.pt',
                             categories = tracked_dets[:, 4]
                             confidences = None
                             for entry in tracked_dets:
-                                data = {'timestamp' : datetime.now(),
-                                        'frame': str(frame),
-                                        'video': filename.split('.')[0],
-                                        'labels': label,
-                                        'feet_coord' : xy[-1],
-                                        'player_coordinates' : [entry[0] , entry[1], entry[2], entry[3]],
-                                        'position' : position,
-                                        'playerId' : entry[-1] }
-
-                                df_log = df_log.append(data, ignore_index = True)
+                                if frame not in dataLogFile:
+                                    dataLogFile[frame] = {}
+                                dataLogFile[frame]['pose_detection_' + str(index)] = label
+                                dataLogFile[frame]['player_' + str(entry[-1])[0] + '_bbox_coords_' + str(index)] = [int(entry[0]) , int(entry[1]), int(entry[2]), int(entry[3])]
+                                dataLogFile[frame]['player_' + str(entry[-1])[0] + '_feet_coords_' + str(index)] = xy[-1]
+                                dataLogFile[frame]['player_' + str(entry[-1])[0] + '_position_' + str(index)] = position
+                                index += 1
 
                             '''loop over tracks'''
                             for t, track in enumerate(tracks):
@@ -334,16 +335,13 @@ def detect_pose(weights: str = 'yolov7.pt',
 
                 # Add frame with no detections in logs
                 else:
-                    data = {'timestamp' : datetime.now(),
-                        'frame': str(frame),
-                        'video': filename.split('.')[0],
-                        'labels': '',
-                        'feet_coord' : '',
-                        'player_coordinates' : '',
-                        'position' : '',
-                        'playerId' : '' }
-                    
-                    df_log = df_log.append(data, ignore_index = True)
+                    if frame not in dataLogFile:
+                        dataLogFile[frame] = {}
+                    dataLogFile[frame]['pose_detection_' + str(index)] = ''
+                    dataLogFile[frame]['player_' + 'None' + '_bbox_coords_' + str(index)] = ''
+                    dataLogFile[frame]['player_' + 'None' + '_feet_coords_' + str(index)] = ''
+                    dataLogFile[frame]['player_' + 'None' + '_position_' + str(index)] = ''
+                    index += 1
 
                 '''Print inference and NMS time'''
                 print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
@@ -400,6 +398,7 @@ def detect_basketball(weights: str = 'yolov7.pt',
     :param track: track people in videos
     :return: vid_path, txt_path, frames_shot_made, shotmade
     """
+    global dataLogFile
     time.sleep(5)
     print("weigths: ", weights)
     # print(source)
@@ -408,7 +407,7 @@ def detect_basketball(weights: str = 'yolov7.pt',
     ##################################################################################################################################################
     '''Variables for counting the shots made'''
     frames_shot_made: list = []
-    NUMBER_OF_FRAMES_AFTER_SHOT_MADE = 5
+    NUMBER_OF_FRAMES_AFTER_SHOT_MADE = 10
     shotmade = 0
     history = []
     for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
@@ -520,6 +519,7 @@ def detect_basketball(weights: str = 'yolov7.pt',
 
                 gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
                 dets_to_sort = np.empty((0, 6))
+                index = 0
                 if len(det):
                     '''Rescale boxes from img_size to im0 size'''
                     det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False).round()
@@ -559,13 +559,12 @@ def detect_basketball(weights: str = 'yolov7.pt',
                             label = names[int(cls)]
                             plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1, kpt_label=False)
                         label = names[int(cls)]
-                        data = {'timestamp' : datetime.now(),
-                            'frame': str(frame),
-                            'video': filename.split('.')[0],
-                            'labels': label,
-                            'bbox_coord' : [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]}
-                        
-                        df_log = df_log.append(data, ignore_index = True)
+
+                        if frame not in dataLogFile:
+                            dataLogFile[frame] = {}
+                        dataLogFile[frame]['basketball_detection_' + str(index)] = label
+                        dataLogFile[frame]['basketball_bbox_coords_' + str(index)] = [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]
+                        index += 1
 
                     dets_to_sort = np.empty((0, 6))
                     # NOTE: We send in detected object class too
@@ -575,13 +574,11 @@ def detect_basketball(weights: str = 'yolov7.pt',
                 
                 # Add frame with no detections in logs
                 else:
-                    data = {'timestamp' : datetime.now(),
-                        'frame': str(frame),
-                        'video': filename.split('.')[0],
-                        'labels': '',
-                        'bbox_coord': ' '}
-                    
-                    df_log = df_log.append(data, ignore_index = True)
+                    if frame not in dataLogFile:
+                        dataLogFile[frame] = {}
+                    dataLogFile[frame]['basketball_detection_' + str(index)] = ''
+                    dataLogFile[frame]['basketball_bbox_coords_' + str(index)] = ''
+                    index += 1
 
                 '''Print inference and NMS time'''
                 print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
@@ -639,6 +636,7 @@ def detect_actions(weights: str = 'yolov7.pt',
     :param track: track people in videos
     :return: vid_path, txt_path, frames_shot_made, shotmade
     """
+    global dataLogFile
     time.sleep(5)
     print("weigths: ", weights)
     # print(source)
@@ -753,6 +751,7 @@ def detect_actions(weights: str = 'yolov7.pt',
 
                 gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
                 dets_to_sort = np.empty((0, 6))
+                index = 0
                 if len(det):
                     '''Rescale boxes from img_size to im0 size'''
                     det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False).round()
@@ -782,13 +781,11 @@ def detect_actions(weights: str = 'yolov7.pt',
                             label = names[int(cls)]
                             plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1, kpt_label=False)
                         label = names[int(cls)]
-                        data = {'timestamp' : datetime.now(),
-                            'frame': str(frame),
-                            'video': filename.split('.')[0],
-                            'labels': label,
-                            'bbox_coord' : [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()] }
-                        
-                        df_log = df_log.append(data, ignore_index = True)
+                        if frame not in dataLogFile:
+                            dataLogFile[frame] = {}
+                        dataLogFile[frame]['action_detection_' + str(index)[0]] = label
+                        dataLogFile[frame]['action_bbox_coords_' + str(index)[0]] = [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]
+                        index += 1
 
                     dets_to_sort = np.empty((0, 6))
                     # NOTE: We send in detected object class too
@@ -798,13 +795,12 @@ def detect_actions(weights: str = 'yolov7.pt',
             
                 # Add frame with no detections in logs
                 else:
-                    data = {'timestamp' : datetime.now(),
-                        'frame': str(frame),
-                        'video': filename.split('.')[0],
-                        'labels': '',
-                        'bbox_coord' : ''}
-                    
-                    df_log = df_log.append(data, ignore_index = True)
+                    if frame not in dataLogFile:
+                        dataLogFile[frame] = {}
+                    dataLogFile[frame]['action_detection_' + str(index)] = ''
+                    dataLogFile[frame]['action_bbox_coords_' + str(index)] = ''
+                    index += 1
+
 
                 '''Print inference and NMS time'''
                 print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
@@ -834,7 +830,41 @@ def detect_actions(weights: str = 'yolov7.pt',
     print(f'Done. ({time.time() - t0:.3f}s)')
     
     return vid_path, txt_path
-        
+def writeToLog():
+    global dataLogFile, dataLogFilePath
+    with open(dataLogFilePath, 'w') as file:
+        yaml.dump(dataLogFile, file)
+def readFromLog():
+    global dataLogFile, dataLogFilePath
+    with open(dataLogFilePath, 'r') as file:
+        dataLogFile = yaml.safe_load(file)
+def populateStats(team1: list, team2: list, video_path: str,
+                  pointsPerPlayer: dict, pointsPerTeam: dict, possessionPerTeam: dict):
+    team1Players = []
+    team2Players = []
+    for player in pointsPerPlayer:
+        if int(player[-1]) in team1:
+            team1Players.append(
+                {player : pointsPerPlayer[player]}
+            )
+        if int(player[-1]) in team2:
+            team2Players.append(
+                {player : pointsPerPlayer[player]}
+            )
+    return {
+        'video_path' : video_path,
+        'team_1' : {
+            'players' : team1Players,
+            'points' : pointsPerTeam['team_1'],
+            'possession' : possessionPerTeam['team_1_possession']
+        },
+        'team_2' : {
+            'players' : team2Players,
+            'points' : pointsPerTeam['team_2'],
+            'possession' : possessionPerTeam['team_2_possession']
+        }
+    }
+
 
 def run_detect(data):
     weights = data[0]
@@ -853,24 +883,71 @@ def run_detect(data):
         print(video_path)
         torch.cuda.empty_cache()
         
-def detect_all(source: str = 'datasets/videos_input/'):
+def detect_all(game_id: str, team1: list, team2: list, source: str = 'datasets/videos_input/'):
+    global dataLogFilePath
+    for vid in os.listdir(source):
+        torch.cuda.empty_cache()
+        with torch.no_grad():
+            dataLogFilePath = 'datasets/logs/'
+            action_weights = 'weights/actions_2.pt'
+            basket_weights = 'weights/net_hoop_basket_combined_april.pt'
+            pose_weights = 'weights/yolov7-w6-pose.pt'
+            dataLogFilePath += f'{game_id}_log.yaml'
+            game_id_source = source+game_id+os.path.splitext(vid)[1]
+            with open(dataLogFilePath, 'w') as file:
+                yaml.dump({}, file)
+            try:
+                shutil.copy2(source+str(vid), game_id_source)
+            except IOError as e:
+                print(f'Error copying file: {e}')
+            detect_actions(weights=action_weights, source=source + str(vid))
+            strip_optimizer(action_weights)
+            writeToLog()
+            video_path, txt_path, frames_shot_made, shotsmade = detect_basketball(weights=basket_weights, source=source + str(vid))
+            strip_optimizer(basket_weights)
+            writeToLog()
+            video_path, txt_path = detect_pose(weights=pose_weights, source=source + str(vid))
+            strip_optimizer(pose_weights)
+            writeToLog()
+            video_path = game_id_source
+            pointsPerPlayer, frames_point_scored = getstats.getPointsPerPlayer(dataLogFilePath)
+            pointsPerTeam = getstats.getPointsPerTeam(pointsPerPlayer, team1, team2)
+            possessionPerTeam = getstats.getPossessionPerTeam(dataLogFilePath)
+            stats = populateStats(team1, team2, video_path, pointsPerPlayer, pointsPerTeam, possessionPerTeam)
+    return stats, video_path, frames_point_scored, shotsmade
+
+def detect_all_multithreads(source: str = 'datasets/videos_input/'):
+    global dataLogFilePath, dataLogFile
     for vid in os.listdir(source):
         torch.cuda.empty_cache()
         with torch.no_grad():
             action_weights = 'weights/actions_2.pt'
             basket_weights = 'weights/net_hoop_basket_combined_april.pt'
             pose_weights = 'weights/yolov7-w6-pose.pt'
-            detect_actions(weights=action_weights, source=source + str(vid))
-            strip_optimizer(action_weights)
-            video_path, txt_path, frames_shot_made, shotsmade = detect_basketball(weights=basket_weights, source=source + str(vid))
-            strip_optimizer(basket_weights)
-            video_path, txt_path = detect_pose(weights=pose_weights, source=source + str(vid))
-            #strip_optimizer(pose_weights)
-        print(video_path)
-    return video_path, txt_path, frames_shot_made, shotsmade
-    
+            dataLogFilePath += os.path.splitext(vid)[0] + '_log.yaml'
+            dataLogFile = {}
+            with open(dataLogFilePath, 'w') as file:
+                yaml.dump({}, file)
+            threads = []
+            thread1 = threading.Thread(target=detect_actions,
+                                       kwargs= {'weights' : action_weights, 'source' : source + str(vid)})
+            threads.append(thread1)
+            thread1.start()
+            thread2 = threading.Thread(target=detect_basketball,
+                                       kwargs={'weights': basket_weights, 'source': source + str(vid)})
+            threads.append(thread2)
+            thread2.start()
+
+            thread3 = threading.Thread(target=detect_pose,
+                                       kwargs={'weights': pose_weights, 'source': source + str(vid)})
+            threads.append(thread3)
+            thread3.start()
+            # Wait for all threads to complete
+            for thread in threads:
+                thread.join()
+            writeToLog()
 if __name__ == '__main__':
-    detect_all()
+    print(detect_all(game_id='default', team1=[1], team2=[2]))
 
     '''For parallel processing: '''
 
