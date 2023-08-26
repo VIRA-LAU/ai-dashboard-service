@@ -1,6 +1,8 @@
 import os
+import pathlib
 import threading
 import time
+import shutil
 from pathlib import Path
 
 import cv2
@@ -881,7 +883,7 @@ def run_detect(data):
         print(video_path)
         torch.cuda.empty_cache()
         
-def detect_all(team1: list, team2: list, source: str = 'datasets/videos_input/'):
+def detect_all(game_id: str, team1: list, team2: list, source: str = 'datasets/videos_input/'):
     global dataLogFilePath
     for vid in os.listdir(source):
         torch.cuda.empty_cache()
@@ -890,9 +892,14 @@ def detect_all(team1: list, team2: list, source: str = 'datasets/videos_input/')
             action_weights = 'weights/actions_2.pt'
             basket_weights = 'weights/net_hoop_basket_combined_april.pt'
             pose_weights = 'weights/yolov7-w6-pose.pt'
-            dataLogFilePath += os.path.splitext(vid)[0] + '_log.yaml'
+            dataLogFilePath += f'{game_id}_log.yaml'
+            game_id_source = source+game_id+os.path.splitext(vid)[1]
             with open(dataLogFilePath, 'w') as file:
                 yaml.dump({}, file)
+            try:
+                shutil.copy2(source+str(vid), game_id_source)
+            except IOError as e:
+                print(f'Error copying file: {e}')
             detect_actions(weights=action_weights, source=source + str(vid))
             strip_optimizer(action_weights)
             writeToLog()
@@ -902,7 +909,7 @@ def detect_all(team1: list, team2: list, source: str = 'datasets/videos_input/')
             video_path, txt_path = detect_pose(weights=pose_weights, source=source + str(vid))
             strip_optimizer(pose_weights)
             writeToLog()
-            video_path = source + str(vid)
+            video_path = game_id_source
             pointsPerPlayer, frames_point_scored = getstats.getPointsPerPlayer(dataLogFilePath)
             pointsPerTeam = getstats.getPointsPerTeam(pointsPerPlayer, team1, team2)
             possessionPerTeam = getstats.getPossessionPerTeam(dataLogFilePath)
@@ -940,7 +947,7 @@ def detect_all_multithreads(source: str = 'datasets/videos_input/'):
                 thread.join()
             writeToLog()
 if __name__ == '__main__':
-    print(detect_all(team1=[1], team2=[2]))
+    print(detect_all(game_id='default', team1=[1], team2=[2]))
 
     '''For parallel processing: '''
 

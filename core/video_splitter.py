@@ -8,7 +8,7 @@ after = 3
 
 # TODO
 # Recheck the timing: before and after might give out of bound values
-def video_splitter(path_to_video: str, frames_shot_made: list) -> list:
+def video_splitter(game_id: str, path_to_video: str, frames_shot_made: list) -> list:
     """
     Splits video at certain frame numbers
     :param path_to_video:
@@ -21,11 +21,11 @@ def video_splitter(path_to_video: str, frames_shot_made: list) -> list:
     print(fps)
     filename = os.path.split(path_to_video)[1]
     filename = filename.split('.', 1)[0]
-    os.makedirs(paths.highlights_path, exist_ok=True)
+    os.makedirs(os.path.join(paths.highlights_path, game_id), exist_ok=True)
     for counter, frame in enumerate(frames_shot_made):
         filename_with_counter = filename + "_" + str(counter) + ".mp4"
         clip = video.subclip(max(int(frame / fps - before), 0), min(int(frame / fps + after), video.duration))
-        clip.write_videofile(os.path.join(paths.highlights_path, filename_with_counter))
-        to_return.append(os.path.join(paths.highlights_path, filename_with_counter))
+        clip.write_videofile(os.path.join(paths.highlights_path, game_id, filename_with_counter))
+        to_return.append(os.path.join(paths.highlights_path, game_id, filename_with_counter))
     print(to_return)
     return to_return
