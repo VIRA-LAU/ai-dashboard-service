@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os.path
-from typing import Tuple, Any
+from typing import Any
 
 import torch
 
@@ -10,8 +10,7 @@ from core.video_concat import video_concat
 from core.video_splitter import video_splitter
 from detect import detect_all
 import application.service.lock_handler.lock_service as lock_service
-from upload_detected_video import upload_highlights_to_s3
-from utils.general import strip_optimizer
+from dev_utils.aws_conn.upload_detected_video import upload_highlights_to_s3
 
 
 class DetectionService:

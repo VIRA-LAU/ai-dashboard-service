@@ -11,5 +11,6 @@
   "concatenated_with_music": "datasets/concatenated_with_music",
   "label_path": "datasets/labels/",
   "logs_path" : "datasets/logs/",
-  "locks_path" : "datasets/locks/"
+  "locks_path" : "datasets/locks/",
+  "hosted_videos_input_path": "https://fitchain-ai-videos.s3.eu-north-1.amazonaws.com/videos_input/"
 }

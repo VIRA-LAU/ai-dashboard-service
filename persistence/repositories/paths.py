@@ -1,5 +1,5 @@
 from pathlib import Path
-from dev_utils import dirs
+from dev_utils.paths import dirs
 from shared.helper.json_helpers import parse_json
 root_dir = dirs.getRootDir()
 paths_file = str(root_dir / "assets/paths.json")
@@ -20,3 +20,4 @@ labels_path = root_dir / Path(parse_json(paths_file)["label_path"])
 
 logs_path = root_dir / Path(parse_json(paths_file)["logs_path"])
 locks_path = root_dir / Path(parse_json(paths_file)["locks_path"])
+hosted_videos_input_path = parse_json(paths_file)['hosted_videos_input_path']

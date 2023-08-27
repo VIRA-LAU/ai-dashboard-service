@@ -4,7 +4,7 @@ import detect
 from containers import Services
 from core.song_player import give_song
 from core.video_splitter import video_splitter
-from domain.models.download_video_fb import download_video
+#from domain.models.download_video_fb import download_video
 from persistence.repositories.api_response import ApiResponse
 from persistence.repositories import paths
 from shared.helper.file_handler import save_video
@@ -12,6 +12,7 @@ from core.video_concat import video_concat
 from domain.models.upload_video_fb import upload_video
 from application.service.highlights_handler import highlights_service
 from application.service.lock_handler import lock_service
+from dev_utils.aws_conn.download_hosted_video import download_video
 from pydantic import BaseModel
 from typing import Union
 
@@ -52,7 +53,7 @@ async def run_inference_in_background(game_id: str, background_tasks: Background
     if lock_service.lockFileExists(game_id):
         return ApiResponse(success=0)
     try:
-    # path_input_video, filename = download_video(video_url_input=path)
+        path_input_video, filename = download_video(game_id)
         background_tasks.add_task(detection_service.run_inference, game_id)
         lock_service.createLockFile(game_id)
     except Exception as e:
