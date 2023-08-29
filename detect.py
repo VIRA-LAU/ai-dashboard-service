@@ -838,7 +838,7 @@ def readFromLog():
     global dataLogFile, dataLogFilePath
     with open(dataLogFilePath, 'r') as file:
         dataLogFile = yaml.safe_load(file)
-def populateStats(team1: list, team2: list, video_path: str,
+def populateStats(team1: list, team2: list, game_id: str,
                   pointsPerPlayer: dict, pointsPerTeam: dict, possessionPerTeam: dict):
     team1Players = []
     team2Players = []
@@ -852,7 +852,7 @@ def populateStats(team1: list, team2: list, video_path: str,
                 {player : pointsPerPlayer[player]}
             )
     return {
-        'video_path' : video_path,
+        'game_id' : game_id,
         'team_1' : {
             'players' : team1Players,
             'points' : pointsPerTeam['team_1'],
@@ -896,10 +896,10 @@ def detect_all(game_id: str, team1: list, team2: list, source: str = 'datasets/v
             game_id_source = source+game_id+os.path.splitext(vid)[1]
             with open(dataLogFilePath, 'w') as file:
                 yaml.dump({}, file)
-            try:
-                shutil.copy2(source+str(vid), game_id_source)
-            except IOError as e:
-                print(f'Error copying file: {e}')
+            # try:
+            #     shutil.copy2(source+str(vid), game_id_source)
+            # except IOError as e:
+            #     print(f'Error copying file: {e}')
             detect_actions(weights=action_weights, source=source + str(vid))
             strip_optimizer(action_weights)
             writeToLog()
@@ -913,7 +913,7 @@ def detect_all(game_id: str, team1: list, team2: list, source: str = 'datasets/v
             pointsPerPlayer, frames_point_scored = getstats.getPointsPerPlayer(dataLogFilePath)
             pointsPerTeam = getstats.getPointsPerTeam(pointsPerPlayer, team1, team2)
             possessionPerTeam = getstats.getPossessionPerTeam(dataLogFilePath)
-            stats = populateStats(team1, team2, video_path, pointsPerPlayer, pointsPerTeam, possessionPerTeam)
+            stats = populateStats(team1, team2, game_id, pointsPerPlayer, pointsPerTeam, possessionPerTeam)
     return stats, video_path, frames_point_scored, shotsmade
 
 def detect_all_multithreads(source: str = 'datasets/videos_input/'):

@@ -4,14 +4,16 @@ import os.path
 from typing import Any
 
 import torch
-
+import requests
 from core.song_player import give_song
 from core.video_concat import video_concat
 from core.video_splitter import video_splitter
 from detect import detect_all
 import application.service.lock_handler.lock_service as lock_service
+import json
 from dev_utils.aws_conn.upload_detected_video import upload_highlights_to_s3
-
+from dev_utils.aws_conn.download_hosted_video import download_video
+from dev_utils.aws_conn.delete_downloaded_video import delete_downloaded_video
 
 class DetectionService:
     def __init__(self):
@@ -24,6 +26,7 @@ class DetectionService:
         return stats, video_path, frames_point_scored, shotsmade
 
     def run_inference(self, game_id: str) -> tuple[dict, str, str, str, str, int]:
+        download_video(game_id)
         stats, video_inferred_path, frames_point_scored, shots_made = self.infer_detection(game_id)
         filename = os.path.basename(video_inferred_path)
         if shots_made > 0:
@@ -35,6 +38,16 @@ class DetectionService:
                                                 filename=filename)
         print(frames_point_scored)
         upload_highlights_to_s3(game_id)
+        # default_stats = {'game_id': 'f1tch41n',
+        #                  'team_1': {'players': [{'player_1': {'scored': 3, 'missed': 0}}], 'points': 3,
+        #                             'possession': '100.0 %'},
+        #                  'team_2': {'players': [], 'points': 0, 'possession': '0.0 %'}}
+        delete_downloaded_video(game_id)
+        requests.patch(
+            url=f'http://80.81.157.19:3000/games/video_processed/{game_id}',
+            data=json.dumps(stats),
+            headers= {'Content-Type': 'application/json'}
+        )
         lock_service.LockService().deleteLockFile(game_id)
         print(stats)
         return stats, video_inferred_path, videos_paths, concatenated, concatenated_with_music, shots_made
