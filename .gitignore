@@ -7,6 +7,8 @@ env/
 traced_model.pt
 
 datasets/*
+assets/templates/*
+assets/post_process.json
 
 .idea/
 traced_model.pt
