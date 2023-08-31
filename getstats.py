@@ -49,8 +49,8 @@ def getPossessionPerTeam(logs, teams):
     possession_team_2 = round(team2_frames * 100 / total_frames, 1)
 
     return {
-        'Team 1 possession' : f'{possession_team_1} %',
-        'Team 2 possession' : f'{possession_team_2} %'
+        'team_1_possession' : f'{possession_team_1} %',
+        'team_2_possession' : f'{possession_team_2} %'
     }
 
 
@@ -247,8 +247,8 @@ def getPointsPerTeam(scoring_players, teams):
         if player_id in team2:
             team2Points += entry['points']
     return {
-        'Team 1' : team1Points,
-        'Team 2' : team2Points
+        'team_1' : team1Points,
+        'team_2' : team2Points
     }
 
 

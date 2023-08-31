@@ -1,5 +1,8 @@
 import os
+import pathlib
+import threading
 import time
+import shutil
 from pathlib import Path
 import yaml
 
@@ -398,7 +401,7 @@ def detect_basketball(weights: str = 'yolov7.pt',
     ##################################################################################################################################################
     '''Variables for counting the shots made'''
     frames_shot_made: list = []
-    NUMBER_OF_FRAMES_AFTER_SHOT_MADE = 5
+    NUMBER_OF_FRAMES_AFTER_SHOT_MADE = 10
     shotmade = 0
     history = []
     for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
@@ -788,6 +791,7 @@ def detect_all(source: str = 'datasets/videos_input/'):
     for vid in os.listdir(source):
         torch.cuda.empty_cache()
         with torch.no_grad():
+            dataLogFilePath = 'datasets/logs/'
             action_weights = 'weights/actions_2.pt'
             basket_weights = 'weights/net_hoop_basket_combined_april.pt'
             pose_weights = 'weights/yolov7-w6-pose.pt'
