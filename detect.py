@@ -1,15 +1,14 @@
 import os
-import threading
 import time
 from pathlib import Path
+import yaml
+
+import numpy as np
+from numpy import random
+import pandas as pd
 
 import cv2
-import numpy as np
-import pandas as pd
 import torch
-import yaml
-from numpy import random
-import getstats
 
 from models.experimental import attempt_load
 from persistence.repositories import paths
@@ -55,6 +54,19 @@ def draw_boxes_tracked(img, bbox, identities=None, categories=None, confidences=
     cv2.putText(img, label, (x1, y1 - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
     return img
 
+
+def extract_key_frames():
+    '''
+        Temporal Analysis
+    '''
+    video_input_path = paths.video_input_path
+    temporal_frames = paths.temporal_frames
+    temporal_model='utils/TubeDETR/models/checkpoints/res352/vidstg_k4.pth'
+    out_dir = video_input_path
+    out_dir_frames = temporal_frames
+    source = stvg.analyze(source,temporal_model,out_dir,out_dir_frames)
+
+
 def detect_pose(weights: str = 'yolov7.pt',
            source: str = 'inference/images',
            img_size: int = 640,
@@ -64,9 +76,7 @@ def detect_pose(weights: str = 'yolov7.pt',
            view_img: bool = False,
            dont_save: bool = False,
            augment: bool = False,
-           track: bool = True,
-           sampling: bool = False,
-           temporal: bool = False) -> tuple:
+           track: bool = True) -> tuple:
     """
     Performs inference on an input video
     :param weights: YOLO-V7 .pt file
@@ -88,10 +98,6 @@ def detect_pose(weights: str = 'yolov7.pt',
     # Parameters
     ##################################################################################################################################################
     
-    '''Sampling rate to generate labels'''
-    if(sampling):
-        NUMBER_OF_FRAMES_PER_LABEL = 20
-    
     save_img = not dont_save and not source.endswith('.txt')  # save inference images
 
     weights_name = weights.split('/')[1] 
@@ -102,21 +108,10 @@ def detect_pose(weights: str = 'yolov7.pt',
     save_label = paths.labels_path / weights_name
     save_logs = paths.logs_path / weights_name
 
-    video_input_path = paths.video_input_path
-    
-    temporal_frames = paths.temporal_frames
-
     save_dir.mkdir(parents=True, exist_ok=True)  # create directory
     save_txt.mkdir(parents=True, exist_ok=True)  # create directory
     save_label.mkdir(parents=True, exist_ok=True)  # create directory
     save_logs.mkdir(parents=True, exist_ok=True)  # create directory
-
-    '''Temporal Analysis'''
-    if(temporal):
-        temporal_model='utils/TubeDETR/models/checkpoints/res352/vidstg_k4.pth'
-        out_dir = video_input_path
-        out_dir_frames = temporal_frames
-        source = stvg.analyze(source,temporal_model,out_dir,out_dir_frames)
 
     '''Initialize'''
     set_logging()
@@ -192,7 +187,7 @@ def detect_pose(weights: str = 'yolov7.pt',
         for i, det in enumerate(pred):  # detections per image
                 p, s, im0, frame = path, '', im0s, getattr(dataset, 'frame', 0)
 
-                pose_logs['pose_detection'][frame] = []
+                pose_logs['pose_detection'][frame] = {}
 
                 p = Path(p)  # to Path
                 filename = (p.name.replace(" ", "_"))
@@ -206,7 +201,6 @@ def detect_pose(weights: str = 'yolov7.pt',
 
                 gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
                 dets_to_sort = np.empty((0, 6))
-                index = 0
                 if len(det):
                     '''Rescale boxes from img_size to im0 size'''
                     det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False).round()
@@ -321,37 +315,28 @@ def detect_pose(weights: str = 'yolov7.pt',
                         if len(tracked_dets) > 0:
                             for track in tracked_dets:
                                 identities = int(track.track_id)
-                                bbox_xyxy = track.to_tlbr()
+                                bbox_xyxy = track.to_tlbr()     # Get current position in bounding box format (min x, miny, max x, max y)
                                 class_name = track.get_class()
                                 categories = class_name
                                 confidences = None
 
                                 player_id = "player_" + str(identities)
 
-                                if(pose_logs['pose_detection'][frame][player_id] is None):
+                                if(player_id not in pose_logs['pose_detection'][frame]):
                                     pose_logs['pose_detection'][frame][player_id] = []
 
                                 # Add Tracked Person to Logs
                                 player_entry = {
                                     "player_id": str(identities),
-                                    "bbox_coords": bbox_xyxy,
-                                    "feet_coords": xy[-1],
+                                    "bbox_coords": bbox_xyxy.tolist(),
+                                    "feet_coords": list(xy[-1]),
                                     "position": position
                                 }
                                 pose_logs['pose_detection'][frame][player_id].append(player_entry)
 
                                 # Draw Boxes on Image
                                 im0 = draw_boxes_tracked(im0, bbox_xyxy, identities, categories, confidences, names, colors)
-
-                # Add frame with no detections in logs
-                else:
-                    frame_entry = {
-                        "player": None,
-                        "bbox_coords": None,
-                        "feet_coords": None,
-                        "position": None
-                    }
-                    pose_logs['pose_detection'][frame].extend(frame_entry)
+                            
 
                 '''Print inference and NMS time'''
                 print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
@@ -379,8 +364,9 @@ def detect_pose(weights: str = 'yolov7.pt',
 
     print(f'Done. ({time.time() - t0:.3f}s)')
 
-    return vid_path, txt_path, pose_logs
-        
+    return pose_logs
+
+    
 def detect_basketball(weights: str = 'yolov7.pt',
            source: str = 'inference/images',
            img_size: int = 640,
@@ -389,10 +375,7 @@ def detect_basketball(weights: str = 'yolov7.pt',
            device: str = '',
            view_img: bool = False,
            dont_save: bool = False,
-           augment: bool = False,
-           track: bool = True,
-           sampling: bool = False,
-           temporal: bool = False) -> tuple:
+           augment: bool = False) -> tuple:
     """
     Performs inference on an input video
     :param weights: YOLO-V7 .pt file
@@ -421,10 +404,6 @@ def detect_basketball(weights: str = 'yolov7.pt',
     for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
         history.append(False)
     
-    '''Sampling rate to generate labels'''
-    if(sampling):
-        NUMBER_OF_FRAMES_PER_LABEL = 20
-    
     save_img = not dont_save and not source.endswith('.txt')  # save inference images
 
     weights_name = weights.split('/')[1] 
@@ -438,13 +417,6 @@ def detect_basketball(weights: str = 'yolov7.pt',
     save_txt.mkdir(parents=True, exist_ok=True)  # create directory
     save_label.mkdir(parents=True, exist_ok=True)  # create directory
     save_logs.mkdir(parents=True, exist_ok=True)  # create directory
-
-    '''Temporal Analysis'''
-    if(temporal):
-        temporal_model='utils/TubeDETR/models/checkpoints/res352/vidstg_k4.pth'
-        out_dir = 'datasets/videos_input/'
-        out_dir_frames = 'datasets/videos_input_frames/'
-        source = stvg.analyze(source,temporal_model,out_dir,out_dir_frames)
 
     '''Initialize'''
     set_logging()
@@ -519,7 +491,6 @@ def detect_basketball(weights: str = 'yolov7.pt',
 
                 gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
                 dets_to_sort = np.empty((0, 6))
-                index = 0
                 if len(det):
                     '''Rescale boxes from img_size to im0 size'''
                     det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False).round()
@@ -607,7 +578,8 @@ def detect_basketball(weights: str = 'yolov7.pt',
     print(f'Done. ({time.time() - t0:.3f}s)')
     
     print(f'Total Made Shots: {shotmade}')
-    return vid_path, txt_path, frames_shot_made, shotmade, basketball_logs
+    return basketball_logs
+
 
 def detect_actions(weights: str = 'yolov7.pt',
            source: str = 'inference/images',
@@ -617,10 +589,7 @@ def detect_actions(weights: str = 'yolov7.pt',
            device: str = '',
            view_img: bool = False,
            dont_save: bool = False,
-           augment: bool = False,
-           track: bool = True,
-           sampling: bool = False,
-           temporal: bool = False) -> tuple:
+           augment: bool = False) -> tuple:
     """
     Performs inference on an input video
     :param weights: YOLO-V7 .pt file
@@ -642,10 +611,6 @@ def detect_actions(weights: str = 'yolov7.pt',
     # Parameters
     ##################################################################################################################################################
     
-    '''Sampling rate to generate labels'''
-    if(sampling):
-        NUMBER_OF_FRAMES_PER_LABEL = 20
-    
     save_img = not dont_save and not source.endswith('.txt')  # save inference images
 
     weights_name = weights.split('/')[1] 
@@ -659,13 +624,6 @@ def detect_actions(weights: str = 'yolov7.pt',
     save_txt.mkdir(parents=True, exist_ok=True)  # create directory
     save_label.mkdir(parents=True, exist_ok=True)  # create directory
     save_logs.mkdir(parents=True, exist_ok=True)  # create directory
-
-    '''Temporal Analysis'''
-    if(temporal):
-        temporal_model='utils/TubeDETR/models/checkpoints/res352/vidstg_k4.pth'
-        out_dir = 'datasets/videos_input/'
-        out_dir_frames = 'datasets/videos_input_frames/'
-        source = stvg.analyze(source,temporal_model,out_dir,out_dir_frames)
 
     '''Initialize'''
     set_logging()
@@ -736,12 +694,11 @@ def detect_actions(weights: str = 'yolov7.pt',
                 label_per_frame = str(save_label_video / (str(frame) + '.txt'))
                 save_path = str(save_dir / (filename.split('.')[0] + "_actions_out" + ".mp4"))  # img.jpg
                 txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
-                #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
+                
                 cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
 
                 gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
                 dets_to_sort = np.empty((0, 6))
-                index = 0
                 if len(det):
                     '''Rescale boxes from img_size to im0 size'''
                     det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False).round()
@@ -763,7 +720,7 @@ def detect_actions(weights: str = 'yolov7.pt',
                         with open(txt_path, 'a') as f:
                             f.write(('\t'.join(line)) + '\n')
                         label = [str(int(cls)), xywh_label]
-                        #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
+                        
                         with open(label_per_frame, 'a') as f:
                             f.write((' '.join(label)) + '\n')
                             
@@ -787,8 +744,8 @@ def detect_actions(weights: str = 'yolov7.pt',
                 # Add frame with no detections in logs
                 else:
                     frame_entry = {
-                        "action": '',
-                        "bbox_coords": ''
+                        "action": None,
+                        "bbox_coords": None
                     }
                     actions_logs['action_detection'][frame].extend(frame_entry)
 
@@ -819,18 +776,15 @@ def detect_actions(weights: str = 'yolov7.pt',
 
     print(f'Done. ({time.time() - t0:.3f}s)')
     
-    return vid_path, txt_path, actions_logs
+    return actions_logs
 
 
-def writeToLog(logs_path, pose_logs, basketball_logs, actions_logs):
+def writeToLog(logs_path, logs):
     with open(logs_path, 'w') as file:
-        yaml.dump(pose_logs, file)
-        yaml.dump(basketball_logs, file)
-        yaml.dump(actions_logs, file)
+        yaml.dump(logs, file)
 
        
 def detect_all(source: str = 'datasets/videos_input/'):
-    stats = []
     for vid in os.listdir(source):
         torch.cuda.empty_cache()
         with torch.no_grad():
@@ -839,31 +793,23 @@ def detect_all(source: str = 'datasets/videos_input/'):
             pose_weights = 'weights/yolov7-w6-pose.pt'
             dataLogFilePath = os.path.join("datasets/logs", os.path.splitext(vid)[0] + '_log.yaml')
 
-            # Detect
-            vid_path, txt_path, actions_logs = detect_actions(weights=action_weights, source=source + str(vid))
+            '''
+                Detect
+            '''
+            # Actions
+            actions_logs = detect_actions(weights=action_weights, source=source + str(vid), dont_save=False)
             strip_optimizer(action_weights)
-            vid_path, txt_path, frames_shot_made, shotmade, basketball_logs = detect_basketball(weights=basket_weights, source=source + str(vid))
+            writeToLog(dataLogFilePath, actions_logs)
+
+            # Basketball
+            basketball_logs = detect_basketball(weights=basket_weights, source=source + str(vid), dont_save=False)
             strip_optimizer(basket_weights)
-            vid_path, txt_path, pose_logs = detect_pose(weights=pose_weights, source=source + str(vid))
+            writeToLog(dataLogFilePath, basketball_logs)
+
+            # Pose
+            pose_logs = detect_pose(weights=pose_weights, source=source + str(vid), dont_save=False)
             strip_optimizer(pose_weights)
-
-            # Write Logs
-            writeToLog(dataLogFilePath, pose_logs, basketball_logs, actions_logs)
-
-            # # Write Stats
-            # pointsPerPlayer = getstats.getPointsPerPlayer(dataLogFilePath)
-            # pointsPerTeam = getstats.getPointsPerTeam(pointsPerPlayer, [1], [2])
-            # possessionPerTeam = getstats.getPossessionPerTeam(dataLogFilePath)
-            # stats_entry = {
-            #     'Video path' : vid,
-            #     'Player points' : pointsPerPlayer,
-            #     'Team 1 points' : pointsPerTeam['Team 1'],
-            #     'Team 2 points' : pointsPerTeam['Team 2'],
-            #     'Possession' : possessionPerTeam
-            # }
-            # stats.append(stats_entry)
-
-    # return stats
+            writeToLog(dataLogFilePath, pose_logs)
 
 
 if __name__ == '__main__':

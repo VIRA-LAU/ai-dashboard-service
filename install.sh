@@ -27,19 +27,23 @@ pip install 'dependency_injector==4.40.0'
 
 pip install 'scikit-image~=0.19.2'
 pip install 'filterpy~=1.4.5'
-pip install 'moviepy'
 pip install 'firebase-admin'
 
 pip install 'ffmpeg_python==0.2.0'
 pip install 'python_hostlist==1.21'
 pip install 'timm==0.4.12'
-pip install 'transformers==4.5.1'
+pip install 'transformers>=4.31.0'
 
 pip install 'packaging==21.3'
 pip install 'torchmetrics<0.5'
+pip install 'python-multipart>=0.0.6'
+
+pip install 'moviepy'
+
+pip install 'boto3'
 
 
-pip install gdown
+pip install 'gdown'
 cd utils/TubeDETR/models/checkpoints/
 gdown https://drive.google.com/uc?id=1GqYjnad42-fri1lxSmT0vFWwYez6_iOv
 mv vidstgk4res352.pth vidstg_k4.pth

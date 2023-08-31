@@ -1,12 +1,27 @@
+import math
+import yaml
+
+import numpy as np
+
+import cv2
+
 from moviepy.editor import *
 
+from getstats import *
 from shared.helper.json_helpers import parse_json
 
+'''
+    Team Stats:
+        1. Lineups
+        2. Scoreboard
+        3. Overall Stats
+        4. All detections bbox
+'''
 def add_score(video, score_asset, scores):
     x = 948
     y = 845
     score_composites=[]
-    frames = scores['frames']
+    frames = scores['frame']
     for i, frame in enumerate(frames):
         team1_score_text = TextClip(str(frames[frame]['team1']['score']),font="SpaceGrotesk-Bold", fontsize=50, color='white')
         team2_score_text = TextClip(str(frames[frame]['team2']['score']),font="SpaceGrotesk-Bold", fontsize=50, color='white')
@@ -15,7 +30,7 @@ def add_score(video, score_asset, scores):
         team2_score_text = team2_score_text.set_pos((x+150,y))
 
         score_clip_composite = CompositeVideoClip([score_asset, team1_score_text, team2_score_text])
-        score_clip_composite = score_clip_composite.set_start(int(frame)/30)
+        score_clip_composite = score_clip_composite.set_start(int(frame)/60)
         score_composites.append(score_clip_composite)
 
         if(i == 0):
@@ -26,7 +41,7 @@ def add_score(video, score_asset, scores):
 
     video_scores = CompositeVideoClip([video, score_clip.crossfadein(1)])
     video_scores.duration = video.duration
-    video_scores.write_videofile("datasets/post_process/exported/test.mp4", fps=30,codec='libx264')
+    video_scores.write_videofile("datasets/post_process/exported/test.mp4", fps=60,codec='libx264')
 
     return video_scores
 
@@ -68,11 +83,94 @@ def load_clips(video_dir, lineups_asset, stats_asset, score_asset):
     return video, lineups, stats, score
 
 
+def draw_bbox():
+    return
+
+
+'''
+    Individual Stats
+'''
+
+def draw_player_bbox(video_path, player_bbox):
+    video = cv2.VideoCapture(video_path)
+    framerate = math.ceil(video.get(cv2.CAP_PROP_FPS))
+
+    output = cv2.VideoWriter(
+        "datasets/post_process/output.mp4", cv2.VideoWriter_fourcc(*'mp4v'), framerate, (1920, 1080))
+    
+    while(True):
+        ret, frame = video.read()
+        frame_num = int(video.get(cv2.CAP_PROP_POS_FRAMES))
+        if(ret):
+            bbox = player_bbox[frame_num]
+            if(bbox is not None):
+                x1, y1, x2, y2 = [int(i) for i in bbox] #xmin, ymin, xmax, ymax
+
+                half_w = int((x2-x1)/2)
+                center=int(x1+half_w)
+                left = center - 15
+                right = center + 15
+                top_c = y1-40
+                top_lr = top_c - 15
+
+                pt1 = (center, top_c) # Center Point
+                pt2 = (left, top_lr) # Left Point
+                pt3 = (right, top_lr) # Right Point
+
+                triangle_cnt = np.array( [pt1, pt2, pt3] )
+
+                # Draw Triangle
+                cv2.drawContours(frame, [triangle_cnt], 0, (255,0,0), -1)
+
+                # # Draw Triangle
+                # cv2.circle(frame, pt1, 2, (0,0,255), -1)
+                # cv2.circle(frame, pt2, 2, (0,0,255), -1)
+                # cv2.circle(frame, pt3, 2, (0,0,255), -1)
+
+            output.write(frame)
+        else:
+            break
+  
+    output.release()
+    video.release()
+
+    return output
+
+
+def add_individual_score(scoring_players, player_id):
+    return
+
+
 if __name__ == "__main__":
-    video_dir = 'datasets/post_process/vids/DSC_0007.MOV'
+    '''
+        Video, Logs
+    '''
+    video_dir = 'datasets/videos_input/04181.mp4'
+    logs_path = 'datasets/logs/04181_log.yaml'
+    with open(logs_path, "r") as stream:
+        logs = yaml.safe_load(stream)
+
+    '''
+        Team Stats
+    '''
+    team1 = [1]
+    team2 = [2]
+    teams = [team1, team2]
+
     lineups_asset_dir = 'assets/templates/' 
     stats_asset_dir = 'assets/templates/'
     score_asset_dir = 'assets/templates/Scoreboard.png'
+
     video, lineups_asset, stats_asset, score_asset = load_clips(video_dir, lineups_asset_dir, stats_asset_dir, score_asset_dir)
-    scores = parse_json("assets/post_process.json")["points_scored"]
+    shooting_players, scoring_players = getShootingPlayers(logs, teams, video_dir)
+    scores = getScoreBoard(scoring_players)
     video_scores = add_score(video, score_asset, scores)
+
+    '''
+        Individual Stats
+    '''
+    with open(logs_path, "r") as stream:
+        logs = yaml.safe_load(stream)
+
+    player_bbox = getPlayerBbox(logs['pose_detection'], "player_1")
+    draw_player_bbox(video_dir, player_bbox)
