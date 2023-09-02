@@ -294,6 +294,47 @@ def getScoreBoard(scoring_players):
 
     return score_board
 
+
+def get2Points3Points():
+    return
+
+
+def getShotAccuracy():
+    return
+
+
+def getBoundingBoxes(logs):
+    basketball_detections = logs['basketball_detection']
+    pose_detections = logs['pose_detection']
+    actions_detections = logs['action_detection']
+
+    bboxes = {}
+
+    for frame in basketball_detections:
+        bboxes[frame] = []
+
+        # Basketball
+        for basket_dets in basketball_detections[frame]:
+            bboxes[frame].append({
+                'bbox_coords': basket_dets['bbox_coords'],
+                'label': basket_dets['shot']
+            })
+
+        for action_dets in actions_detections[frame]:
+            bboxes[frame].append({
+                'bbox_coords': action_dets['bbox_coords'],
+                'label': action_dets['action']
+            })
+
+        if(frame in pose_detections):
+            for player in pose_detections[frame]:
+                bboxes[frame].append({
+                    'bbox_coords': pose_detections[frame][player][0]['bbox_coords'],
+                    'label': pose_detections[frame][player][0]['player_id']
+                })
+
+    print(bboxes)
+    return
 '''
     Individual Stats
 '''
@@ -375,8 +416,8 @@ def get_video_framerate(video_path):
 
 
 if __name__ == "__main__":
-    video = 'datasets/videos_input/04181.mp4'
-    logs_path = 'datasets/logs/04181_log.yaml'
+    video = 'datasets/videos_input/04183.mp4'
+    logs_path = 'datasets/logs/04183_log.yaml'
     team1 = [1]
     team2 = [2]
     teams = [team1, team2]
@@ -406,3 +447,5 @@ if __name__ == "__main__":
     print("7#######################################")
     print(assists)
     print("7#######################################")
+    
+    getBoundingBoxes(logs)

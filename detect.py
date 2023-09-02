@@ -783,11 +783,21 @@ def detect_actions(weights: str = 'yolov7.pt',
 
 
 def writeToLog(logs_path, logs):
-    with open(logs_path, 'w') as file:
-        yaml.dump(logs, file)
+    try:
+        with open(logs_path, 'r') as yamlfile:
+            cur_yaml = yaml.safe_load(yamlfile)
+            cur_yaml.update(logs)
+
+        if cur_yaml:
+            with open(logs_path,'w') as yamlfile:
+                yaml.safe_dump(cur_yaml, yamlfile)
+    except:
+        with open(logs_path,'w') as yamlfile:
+            yaml.safe_dump(logs, yamlfile)
 
        
 def detect_all(source: str = 'datasets/videos_input/'):
+    print(torch.cuda.is_available())
     for vid in os.listdir(source):
         torch.cuda.empty_cache()
         with torch.no_grad():
@@ -800,15 +810,15 @@ def detect_all(source: str = 'datasets/videos_input/'):
             '''
                 Detect
             '''
-            # Actions
-            actions_logs = detect_actions(weights=action_weights, source=source + str(vid), dont_save=False)
-            strip_optimizer(action_weights)
-            writeToLog(dataLogFilePath, actions_logs)
+            # # Actions
+            # actions_logs = detect_actions(weights=action_weights, source=source + str(vid), dont_save=False)
+            # strip_optimizer(action_weights)
+            # writeToLog(dataLogFilePath, actions_logs)
 
-            # Basketball
-            basketball_logs = detect_basketball(weights=basket_weights, source=source + str(vid), dont_save=False)
-            strip_optimizer(basket_weights)
-            writeToLog(dataLogFilePath, basketball_logs)
+            # # Basketball
+            # basketball_logs = detect_basketball(weights=basket_weights, source=source + str(vid), dont_save=False)
+            # strip_optimizer(basket_weights)
+            # writeToLog(dataLogFilePath, basketball_logs)
 
             # Pose
             pose_logs = detect_pose(weights=pose_weights, source=source + str(vid), dont_save=False)

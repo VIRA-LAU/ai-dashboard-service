@@ -18,48 +18,59 @@ from shared.helper.json_helpers import parse_json
         3. Overall Stats
         4. All detections bbox
 '''
+def add_stats(video, stats_asset, stats):
+    return
+
 def add_score(video, score_asset, scores):
     x = 948
     y = 845
     score_composites=[]
     frames = scores['frame']
+    team1_name_text = TextClip("Team A",font="SpaceGrotesk-Bold", fontsize=50, color='white').set_pos((x-450,y))
+    team2_name_text = TextClip("Team B",font="SpaceGrotesk-Bold", fontsize=50, color='white').set_pos((x+300,y))
+    team1_score_text = TextClip(str(0),font="SpaceGrotesk-Bold", fontsize=50, color='white').set_pos((x-150,y))
+    team2_score_text = TextClip(str(0),font="SpaceGrotesk-Bold", fontsize=50, color='white').set_pos((x+150,y))
+
     for i, frame in enumerate(frames):
+        if(i == 0):
+            clip_duration = video.duration - int(frame)/30
+            score_initial_clip_composite = CompositeVideoClip([score_asset, team1_name_text, team2_name_text, team1_score_text, team2_score_text])
+            score_initial_clip_composite.duration = clip_duration
+            score_composites.append(score_initial_clip_composite.crossfadein(1))
+
         team1_score_text = TextClip(str(frames[frame]['team1']['score']),font="SpaceGrotesk-Bold", fontsize=50, color='white')
         team2_score_text = TextClip(str(frames[frame]['team2']['score']),font="SpaceGrotesk-Bold", fontsize=50, color='white')
 
         team1_score_text = team1_score_text.set_pos((x-150,y))
         team2_score_text = team2_score_text.set_pos((x+150,y))
 
-        score_clip_composite = CompositeVideoClip([score_asset, team1_score_text, team2_score_text])
+        score_clip_composite = CompositeVideoClip([score_asset, team1_name_text, team2_name_text, team1_score_text, team2_score_text])
         score_clip_composite = score_clip_composite.set_start(int(frame)/60)
         score_composites.append(score_clip_composite)
-
-        if(i == 0):
-            clip_duration = video.duration - int(frame)/30
 
     score_clip = CompositeVideoClip(score_composites)
     score_clip.duration = clip_duration
 
     video_scores = CompositeVideoClip([video, score_clip.crossfadein(1)])
     video_scores.duration = video.duration
-    video_scores.write_videofile("datasets/post_process/exported/test.mp4", fps=60,codec='libx264')
 
     return video_scores
 
 
-def add_lineups(video, lineups, team):
-    x=500
-    y=700
-    text_composites=[]
+def add_lineups(background, lineups, team):
+    composites=[]
 
     x_num = 750
     y_first = 350
 
+    logo = ImageClip('assets/templates/fitchain_logo.png')
     logo = resize(logo, height=80, width=80)
     logo = logo.set_position((645, 190))
     txt_team = TextClip("FITCHAIN", font='Space-Grotesk-Bold', color='#FFFFFF',fontsize=40)
     txt_mov_team = txt_team.set_pos((750, 205))
-    text_composites.append(logo, txt_mov_team)
+    composites.append(lineups)
+    composites.append(logo)
+    composites.append(txt_mov_team)
 
     y_increment = 0
     for player in team["players"]:
@@ -67,36 +78,69 @@ def add_lineups(video, lineups, team):
         first_name_txt = TextClip(str(player["first name"]),font="Space Grotesk", fontsize=30, color='black')
         last_name_txt = TextClip(str(player["last name"]),font="Space Grotesk", fontsize=30, color='black')
 
-        number_txt = number_txt.set_pos(x_num,y)
-        first_name_txt = first_name_txt.set_pos(x+number_txt.w+50,y)
-        last_name_txt = last_name_txt.set_pos(x+last_name_txt.w+70,y)
+        number_txt = number_txt.set_pos((x_num, y_first+y_increment))
+        first_name_txt = first_name_txt.set_pos((x_num+number_txt.w+40, y_first+y_increment))
+        last_name_txt = last_name_txt.set_pos((x_num+last_name_txt.w+80, y_first+y_increment))
 
-        text_composites.append(number_txt, first_name_txt, last_name_txt)
+        composites.append(number_txt)
+        composites.append(first_name_txt)
+        composites.append(last_name_txt)
+        y_increment+=52.5
 
-    text_clip = CompositeVideoClip(text_composites)
-
-    video_lineup = CompositeVideoClip([video, # starts at t=0
-                            lineups.set_start(2).crossfadein(1),
-                            text_clip.set_start(2).crossfadein(1.5)])
+    team_composites = CompositeVideoClip(composites)
+    lineups = CompositeVideoClip([background.subclip(0, 5), team_composites]).set_duration(5).crossfadein(1).crossfadeout(1)
     
-    video_lineup = video_lineup.set_duration(10).crossfadeout(2)
-    
-    return video_lineup
+    return lineups
 
 
-def load_clips(video_dir, lineups_asset, stats_asset, score_asset):
+def load_clips(video_dir, lineups_asset, stats_asset, score_asset, background_asset_dir):
     video = VideoFileClip(video_dir)
-    # lineups = VideoFileClip(lineups_asset)
-    lineups = ''
-    stats = ''
-    # stats = VideoFileClip(stats_asset)
+    lineups = ImageClip(lineups_asset)
+    stats = ImageClip(stats_asset)
     score = ImageClip(score_asset)
+    background = VideoFileClip(background_asset_dir)
 
-    return video, lineups, stats, score
+    stats = resize(stats, height=1080, width=1920)
+    lineups = resize(lineups, height=1080, width=1920)
+    background = resize(background, height=1080, width=1920)
+
+    return video, lineups, stats, score, background
 
 
-def draw_bbox():
+def draw_bbox(video, bbox_coords):
     return
+
+
+def process_highlights(logs, lineup={}):
+    '''
+        Team Stats
+    '''
+    team1 = [1]
+    team2 = [2]
+    dummy_teams = [team1, team2]
+
+    lineups_asset_dir = 'assets/templates/lineups_asset.png' 
+    stats_asset_dir = 'assets/templates/stats_asset.png'
+    score_asset_dir = 'assets/templates/scoreboard_asset.png'
+    background_asset_dir = 'assets/templates/background_asset.mp4'
+
+    video, lineups_asset, stats_asset, score_asset, background_asset = load_clips(video_dir, lineups_asset_dir, stats_asset_dir, score_asset_dir, background_asset_dir)
+    shooting_players, scoring_players = getShootingPlayers(logs, dummy_teams, video_dir)
+    scores = getScoreBoard(scoring_players)
+    video_post = add_score(video, score_asset, scores)
+
+    lineups_composite = []
+    for team in lineup:
+        video_lineups = add_lineups(background_asset, lineups_asset, lineup[team])
+        lineups_composite.append(video_lineups)
+    video_lineup = concatenate_videoclips(lineups_composite).crossfadeout(1)
+    video_post = concatenate_videoclips([video_lineup, video_post.crossfadein(1)])
+
+    video_post = resize(video_post, height=720, width=1280)
+
+    video_post.write_videofile("datasets/post_process/exported/test.mp4", fps=30)
+
+    return video_post
 
 
 '''
@@ -157,32 +201,22 @@ if __name__ == "__main__":
     '''
         Video, Logs
     '''
-    video_dir = 'datasets/videos_input/04181.mp4'
-    logs_path = 'datasets/logs/04181_log.yaml'
+    video_dir = 'datasets/videos_input/04183.mp4'
+    logs_path = 'datasets/logs/04183_log.yaml'
     with open(logs_path, "r") as stream:
         logs = yaml.safe_load(stream)
 
-    '''
-        Team Stats
-    '''
-    team1 = [1]
-    team2 = [2]
-    teams = [team1, team2]
+    # Dummy Lineups
+    dummy_stats_dir = 'assets/post_process.json'
+    dummy_lineup = parse_json(dummy_stats_dir)['lineup']
 
-    lineups_asset_dir = 'assets/templates/' 
-    stats_asset_dir = 'assets/templates/'
-    score_asset_dir = 'assets/templates/Scoreboard.png'
-
-    video, lineups_asset, stats_asset, score_asset = load_clips(video_dir, lineups_asset_dir, stats_asset_dir, score_asset_dir)
-    shooting_players, scoring_players = getShootingPlayers(logs, teams, video_dir)
-    scores = getScoreBoard(scoring_players)
-    video_scores = add_score(video, score_asset, scores)
+    process_highlights(logs, lineup=dummy_lineup)
 
     '''
         Individual Stats
     '''
-    with open(logs_path, "r") as stream:
-        logs = yaml.safe_load(stream)
+    # with open(logs_path, "r") as stream:
+    #     logs = yaml.safe_load(stream)
 
-    player_bbox = getPlayerBbox(logs['pose_detection'], "player_1")
-    draw_player_bbox(video_dir, player_bbox)
+    # player_bbox = getPlayerBbox(logs['pose_detection'], "player_1")
+    # draw_player_bbox(video_dir, player_bbox)

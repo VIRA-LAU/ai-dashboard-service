@@ -9,10 +9,10 @@ pip install 'PyYAML>=5.3.1'
 pip install 'requests>=2.23.0'
 pip install 'scipy>=1.4.1'
 
--i https://download.pytorch.org/whl/cu113
-
-pip install 'torch==1.11.0+cu113'
-pip install 'torchvision==0.12.0+cu113'
+# Check https://pytorch.org/get-started/locally/ for latest PyTorch version and CUDA compatibility
+# Install CUDA from https://developer.nvidia.com/cuda-toolkit-archive
+# Then install PyTorch from https://pytorch.org/get-started/locally/
+pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118
 
 pip install 'tqdm>=4.41.0'
 pip install 'protobuf<4.21.3'
@@ -42,15 +42,19 @@ pip install 'moviepy'
 
 pip install 'boto3'
 
+pip install 'tensorflow>=2.4.1'
+
 
 pip install 'gdown'
-cd utils/TubeDETR/models/checkpoints/
+cd utils/TubeDETR/models
+mkdir checkpoints
+cd checkpoints
 gdown https://drive.google.com/uc?id=1GqYjnad42-fri1lxSmT0vFWwYez6_iOv
 mv vidstgk4res352.pth vidstg_k4.pth
 cd ~
 mkdir weights
 
-cd datasets/
+cd datasets
 mkdir videos_input
 mkdir videos_temporal_input
 mkdir videos_temporal_frames
