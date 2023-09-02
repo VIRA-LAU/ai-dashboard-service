@@ -6,6 +6,7 @@ import numpy as np
 import cv2
 
 from moviepy.editor import *
+from moviepy.video.fx.resize import resize
 
 from getstats import *
 from shared.helper.json_helpers import parse_json
@@ -50,14 +51,25 @@ def add_lineups(video, lineups, team):
     x=500
     y=700
     text_composites=[]
-    for player in team["players"]:
-        number_txt = TextClip(player["number"],font="Space Grotesk", fontsize=30, color='black')
-        first_name_txt = TextClip(player["first name"],font="Space Grotesk", fontsize=30, color='black')
-        last_name_txt = TextClip(player["last name"],font="Space Grotesk", fontsize=30, color='black')
 
-        number_txt = number_txt.set_pos(x,y)
-        first_name_txt = first_name_txt.set_pos(x+70+number_txt.w,y)
-        last_name_txt = last_name_txt.set_pos(x+70+last_name_txt.w,y)
+    x_num = 750
+    y_first = 350
+
+    logo = resize(logo, height=80, width=80)
+    logo = logo.set_position((645, 190))
+    txt_team = TextClip("FITCHAIN", font='Space-Grotesk-Bold', color='#FFFFFF',fontsize=40)
+    txt_mov_team = txt_team.set_pos((750, 205))
+    text_composites.append(logo, txt_mov_team)
+
+    y_increment = 0
+    for player in team["players"]:
+        number_txt = TextClip(str(player["number"]),font="Space Grotesk", fontsize=30, color='black')
+        first_name_txt = TextClip(str(player["first name"]),font="Space Grotesk", fontsize=30, color='black')
+        last_name_txt = TextClip(str(player["last name"]),font="Space Grotesk", fontsize=30, color='black')
+
+        number_txt = number_txt.set_pos(x_num,y)
+        first_name_txt = first_name_txt.set_pos(x+number_txt.w+50,y)
+        last_name_txt = last_name_txt.set_pos(x+last_name_txt.w+70,y)
 
         text_composites.append(number_txt, first_name_txt, last_name_txt)
 
