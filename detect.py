@@ -549,8 +549,8 @@ def detect_basketball(weights: str = 'yolov7.pt',
                 # Add frame with no detections in logs
                 else:
                     frame_entry = {
-                        "shot": '',
-                        "bbox_coords": ''
+                        "shot": None,
+                        "bbox_coords": None
                     }
                     basketball_logs['basketball_detection'][frame].extend(frame_entry)
 
@@ -815,15 +815,15 @@ def detect_all(source: str = 'datasets/videos_input/'):
             # strip_optimizer(action_weights)
             # writeToLog(dataLogFilePath, actions_logs)
 
-            # # Basketball
-            # basketball_logs = detect_basketball(weights=basket_weights, source=source + str(vid), dont_save=False)
-            # strip_optimizer(basket_weights)
-            # writeToLog(dataLogFilePath, basketball_logs)
+            # Basketball
+            basketball_logs = detect_basketball(weights=basket_weights, source=source + str(vid), dont_save=False)
+            strip_optimizer(basket_weights)
+            writeToLog(dataLogFilePath, basketball_logs)
 
-            # Pose
-            pose_logs = detect_pose(weights=pose_weights, source=source + str(vid), dont_save=False)
-            strip_optimizer(pose_weights)
-            writeToLog(dataLogFilePath, pose_logs)
+            # # Pose
+            # pose_logs = detect_pose(weights=pose_weights, source=source + str(vid), dont_save=False)
+            # strip_optimizer(pose_weights)
+            # writeToLog(dataLogFilePath, pose_logs)
 
 
 if __name__ == '__main__':

@@ -14,6 +14,19 @@ import cv2
             getPointsPerTeam
             getScoreBoard
 '''
+
+'''
+    Data
+        shooting_players: dict
+        
+        scoring_players: dict
+
+        points_per_team: dict
+
+        points_per_player: dict
+
+'''
+
 def getPossessionPerTeam(logs, teams):
     team1, team2 = teams
     team1_frames = 0
@@ -208,6 +221,7 @@ def getShootingPlayers(logs, teams, video):
                                 'player': playerNum,
                                 'shot': 'scored',
                                 'points': 2 if player_position == '2_points' else 3,
+                                'player_position': player_position,
                                 'xy_position': xy_position,
                                 'team': "team1" if playerNum in team1 else "team2"
                             }
@@ -218,6 +232,7 @@ def getShootingPlayers(logs, teams, video):
                                 'player': playerNum,
                                 'shot': 'missed',
                                 'points': 0,
+                                'player_position': player_position,
                                 'xy_position': xy_position,
                                 'team': "team1" if playerNum in team1 else "team2"
                             }
@@ -250,6 +265,50 @@ def getPointsPerTeam(scoring_players, teams):
         'team_1' : team1Points,
         'team_2' : team2Points
     }
+
+
+def getPointsPerPlayer(scoring_players):
+    points_per_player = {}
+    for entry in scoring_players:
+        player = entry['player']
+        if(player not in points_per_player):
+            points_per_player[player] = {
+                'player': player,
+                'points': 0,
+                'team': entry['team']
+            }
+
+        points_per_player[player]['points'] +=  entry['points']
+
+    return points_per_player
+
+
+def getShotsTakenGame(scoring_players):
+    return len(scoring_players)
+
+
+def getShotsTakenTeam(scoring_players, team):
+    shots_taken_team = []
+    for entry in scoring_players:
+        if(entry['team']==team):
+            shots_taken_team.append(entry)
+    return len(shots_taken_team)
+
+
+def getShotsMadeGame(scoring_players):
+    shots_made = []
+    for entry in scoring_players:
+        if(entry['shot']=='scored'):
+            shots_made.append(entry)
+    return len(shots_made)
+
+
+def getShotsMadeTeam(scoring_players, team):
+    shots_made_team = []
+    for entry in scoring_players:
+        if(entry['shot']=='scored' and entry['team']==team):
+            shots_made_team.append(entry)
+    return len(shots_made_team)
 
 
 def getScoreBoard(scoring_players):
@@ -295,12 +354,53 @@ def getScoreBoard(scoring_players):
     return score_board
 
 
-def get2Points3Points():
-    return
+def getShotAccuracy(shotstaken, shotsmade):
+    return (shotsmade/shotstaken)*100 if shotstaken > 0 else None
 
 
-def getShotAccuracy():
-    return
+def get2Points3PointsGame(scoring_players):
+    two_points_scored = []
+    three_points_scored = []
+    two_points_taken = []
+    three_points_taken = []
+    for entry in scoring_players:
+        if(entry['shot']=='scored'):
+            if(entry['player_position']=='2_points'):
+                two_points_scored.append(entry)
+            elif(entry['player_position']=='3_points'):
+                three_points_scored.append(entry)
+        if(entry['player_position']=='2_points'):
+            two_points_taken.append(entry)
+        elif(entry['player_position']=='3_points'):
+            three_points_taken.append(entry)
+
+    return len(two_points_scored), len(three_points_scored), len(two_points_taken), len(three_points_taken)
+
+
+def get2Points3PointsTeam(scoring_players, team):
+    two_points_scored = []
+    three_points_scored = []
+    two_points_taken = []
+    three_points_taken = []
+    for entry in scoring_players:
+        if(entry['team']==team):
+            if(entry['shot']=='scored'):
+                if(entry['player_position']=='2_points'):
+                    two_points_scored.append(entry)
+                elif(entry['player_position']=='3_points'):
+                    three_points_scored.append(entry)
+            if(entry['player_position']=='2_points'):
+                two_points_taken.append(entry)
+            elif(entry['player_position']=='3_points'):
+                three_points_taken.append(entry)
+
+    return len(two_points_scored), len(three_points_scored), len(two_points_taken), len(three_points_taken)
+
+
+def get2Points3PointsAccuracy(two_points_scored, three_points_scored, two_points_missed, three_points_missed):
+    two_points_accuracy = (two_points_scored/two_points_missed)*100 if two_points_missed > 0 else None
+    three_points_accuracy = (three_points_scored/three_points_missed)*100 if three_points_missed > 0 else None
+    return two_points_accuracy, three_points_accuracy
 
 
 def getBoundingBoxes(logs):
@@ -414,6 +514,121 @@ def get_video_framerate(video_path):
         return 0
 
 
+'''
+    Endpoint Stats
+'''
+def populateStats(logs: dict,
+                  video: str,
+                  game_id: str,
+                  teams: list):
+    
+    team1, team2 = teams
+    # Get All Stats
+    allstats = getAllStats(logs, video, teams)
+    points_per_team = allstats['points_per_team']
+    points_per_player = allstats['points_per_player']
+    possession = allstats['possession']
+    shots = allstats['shots']
+    
+    # Add Each Individual Player Stats to their Team Stats
+    team1Players = []
+    team2Players = []
+    for player in points_per_player:
+        if int(player) in team1:
+            team1Players.append(
+                {player : str(points_per_player[player])}
+            )
+        if int(player) in team2:
+            team2Players.append(
+                {player : str(points_per_player[player])}
+            )
+
+    endpoint_stats = {
+        'game_id' : game_id,
+        'team_1' : {
+            'players' : team1Players,
+            'points' : points_per_team['team_1'],
+            'possession' : possession['team_1_possession'],
+            'shots': shots['team1']
+        },
+        'team_2' : {
+            'players' : team2Players,
+            'points' : points_per_team['team_2'],
+            'possession' : possession['team_2_possession'],
+            'shots': shots['team2']
+            }
+    }
+
+    return allstats, endpoint_stats
+
+
+def getAllStats(logs, video, teams):
+    possession = getPossessionPerTeam(logs, teams)
+    shooting_players, scoring_players = getShootingPlayers(logs, teams, video)
+    score_board = getScoreBoard(scoring_players)
+    individual_stats = getIndividualStats(scoring_players)
+    points_per_team = getPointsPerTeam(scoring_players, teams)
+    points_per_player = getPointsPerPlayer(scoring_players)
+    passes, assists = getPassesPerTeam(logs, teams, video)
+
+    '''
+        Game Shots Stats
+    '''
+    shotstaken_game = getShotsTakenGame(scoring_players)
+    shotsmade_game = getShotsMadeGame(scoring_players)
+    shot_accuracy_game = getShotAccuracy(shotstaken_game, shotsmade_game)
+
+    '''
+        Team Shots Stats
+    '''
+    # All Shots
+    shotstaken_team1 = getShotsTakenTeam(scoring_players, 'team1')
+    shotstaken_team2 = getShotsTakenTeam(scoring_players, 'team2')
+    shotsmade_team1 = getShotsMadeTeam(scoring_players, 'team1')
+    shotsmade_team2 = getShotsMadeTeam(scoring_players, 'team2')
+    shots_accuracy_team1 = getShotAccuracy(shotstaken_team1, shotsmade_team1)
+    shots_accuracy_team2 = getShotAccuracy(shotstaken_team2, shotsmade_team2)
+
+    # 2 Points 3 Points
+    two_points_scored1, three_points_scored1, two_points_taken1, three_points_taken1 = get2Points3PointsTeam(scoring_players, 'team1')
+    two_points_scored2, three_points_scored2, two_points_taken2, three_points_taken2 = get2Points3PointsTeam(scoring_players, 'team2')
+    two_points_accuracy1, three_points_accuracy1 = get2Points3PointsAccuracy(two_points_scored1, three_points_scored1, two_points_taken1, three_points_taken1)
+    two_points_accuracy2, three_points_accuracy2 = get2Points3PointsAccuracy(two_points_scored2, three_points_scored2, two_points_taken2, three_points_taken2)
+
+    shots = {
+        'team1': {
+            'shotsmade': shotsmade_team1,
+            'shots_accuracy': shots_accuracy_team1,
+            'shotsmade_2points': two_points_scored1,
+            'shots_2points_accuracy': two_points_accuracy1,
+            'shotsmade_3points': three_points_scored1,
+            'shots_3points_accuracy': three_points_accuracy1,
+        }, 
+        'team2': {
+            'shotsmade': shotsmade_team2,
+            'shots_accuracy': shots_accuracy_team2,
+            'shotsmade_2points': two_points_scored2,
+            'shots_2points_accuracy': two_points_accuracy2,
+            'shotsmade_3points': three_points_scored2,
+            'shots_3points_accuracy': three_points_accuracy2,
+        }
+    }
+
+    allstats = {
+        "possession": possession,
+        "shooting_players": shooting_players,
+        "scoring_players": scoring_players,
+        "score_board": score_board,
+        "individual_stats": individual_stats,
+        "points_per_team": points_per_team,
+        "points_per_player": points_per_player,
+        "passes": passes,
+        "assists": assists,
+        "shots": shots
+    }
+
+    return allstats
+
 
 if __name__ == "__main__":
     video = 'datasets/videos_input/04183.mp4'
@@ -424,28 +639,35 @@ if __name__ == "__main__":
     with open(logs_path, "r") as stream:
         logs = yaml.safe_load(stream)
 
-    possession = getPossessionPerTeam(logs, teams)
-    shooting_players, scoring_players = getShootingPlayers(logs, teams, video)
-    score_board = getScoreBoard(scoring_players)
-    individual_stats = getIndividualStats(scoring_players)
-    points_per_team = getPointsPerTeam(scoring_players, teams)
-    passes, assists = getPassesPerTeam(logs, teams, video)
-
-    print(possession)
+    allstats, endpoint_stats = populateStats(logs, video, "game1234", teams)
+    print(allstats)
     print("1#######################################")
-    print(shooting_players)
-    print("2#######################################")
-    print(scoring_players)
-    print("3#######################################")
-    print(points_per_team)
-    print("4#######################################")
-    print(score_board)
-    print("5#######################################")
-    print(individual_stats)
-    print("6#######################################")
-    print(passes)
-    print("7#######################################")
-    print(assists)
-    print("7#######################################")
-    
-    getBoundingBoxes(logs)
+    print(endpoint_stats)
+
+    # print(possession)
+    # print("1#######################################")
+    # print(shooting_players)
+    # print("2#######################################")
+    # print(scoring_players)
+    # print("3#######################################")
+    # print(points_per_team)
+    # print("4#######################################")
+    # print(points_per_player)
+    # print("4#######################################")
+    # print(score_board)
+    # print("6#######################################")
+    # print(individual_stats)
+    # print("7#######################################")
+    # print(passes)
+    # print("8#######################################")
+    # print(assists)
+    # print("9#######################################")
+    # print(stats)
+    # print("10######################################")
+    # print(shotstaken_game)
+    # print("11######################################")
+    # print(shotsmade_game)
+    # print("12######################################")
+    # print(str(shot_accuracy_game) + '%')
+
+    # getBoundingBoxes(logs)
