@@ -275,10 +275,12 @@ def getPointsPerPlayer(scoring_players):
             points_per_player[player] = {
                 'player': player,
                 'points': 0,
+                'shotsmade': 0,
                 'team': entry['team']
             }
 
         points_per_player[player]['points'] +=  entry['points']
+        points_per_player[player]['shotsmade'] +=  1 if entry['shot'] == 'scored' else points_per_player[player]['shotsmade']
 
     return points_per_player
 
@@ -531,17 +533,27 @@ def populateStats(logs: dict,
     shots = allstats['shots']
     
     # Add Each Individual Player Stats to their Team Stats
-    team1Players = []
-    team2Players = []
+    team1Players = {}
+    team2Players = {}
+    for player in team1:
+        team1Players[player] = {
+            'points': 0,
+            'shotsmade' : 0
+        }
+    for player in team2:
+        team2Players[player] = {
+            'points': 0,
+            'shotsmade' : 0
+        }
+
     for player in points_per_player:
         if int(player) in team1:
-            team1Players.append(
-                {player : str(points_per_player[player])}
-            )
+            team1Players[player]['points'] += points_per_player[player]['points']
+            team1Players[player]['shotsmade'] += points_per_player[player]['shotsmade']
+
         if int(player) in team2:
-            team2Players.append(
-                {player : str(points_per_player[player])}
-            )
+            team2Players[player]['points'] += points_per_player[player]['points']
+            team2Players[player]['shotsmade'] += points_per_player[player]['shotsmade']
 
     endpoint_stats = {
         'game_id' : game_id,
@@ -560,6 +572,19 @@ def populateStats(logs: dict,
     }
 
     return allstats, endpoint_stats
+
+
+def getShotsMadeFrames(logs: dict,
+                      video: str,
+                      game_id: str,
+                      teams: list):
+    shotsmade_frames = []
+    allstats = getAllStats(logs, video, teams)
+    scoring_players = allstats['scoring_players']
+    for entry in scoring_players:
+        if(entry['shot']=='scored'):
+            shotsmade_frames.append(entry['frame'])
+    return shotsmade_frames, len(shotsmade_frames)
 
 
 def getAllStats(logs, video, teams):
@@ -640,9 +665,14 @@ if __name__ == "__main__":
         logs = yaml.safe_load(stream)
 
     allstats, endpoint_stats = populateStats(logs, video, "game1234", teams)
+    shotsmade_frames, shotsmade = getShotsMadeFrames(logs, video, "game1234", teams)
     print(allstats)
     print("1#######################################")
     print(endpoint_stats)
+    print("2#######################################")
+    print(shotsmade_frames)
+    print("3#######################################")
+    print(shotsmade)
 
     # print(possession)
     # print("1#######################################")

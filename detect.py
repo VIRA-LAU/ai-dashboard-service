@@ -549,8 +549,8 @@ def detect_basketball(weights: str = 'yolov7.pt',
                 # Add frame with no detections in logs
                 else:
                     frame_entry = {
-                        "shot": None,
-                        "bbox_coords": None
+                        "shot": '0',
+                        "bbox_coords": []
                     }
                     basketball_logs['basketball_detection'][frame].extend(frame_entry)
 
@@ -747,8 +747,8 @@ def detect_actions(weights: str = 'yolov7.pt',
                 # Add frame with no detections in logs
                 else:
                     frame_entry = {
-                        "action": None,
-                        "bbox_coords": None
+                        "action": '0',
+                        "bbox_coords": []
                     }
                     actions_logs['action_detection'][frame].extend(frame_entry)
 
