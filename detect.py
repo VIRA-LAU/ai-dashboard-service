@@ -20,6 +20,7 @@ from utils.datasets import LoadImages
 from utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging, xyxy2xywh, non_max_suppression_kpt
 from utils.plots import plot_one_box, output_to_keypoint, plot_kpts
 from utils.torch_utils import select_device, time_synchronized, TracedModel
+from utils.google_utils import gdrive_download
 
 from bridge_wrapper import *
 from detection_helpers import *
@@ -62,6 +63,9 @@ def extract_key_frames():
     '''
         Temporal Analysis
     '''
+    if len(os.listdir('utils/TubeDETR/models/checkpoints/res352/')) == 0:
+        ckpt = gdrive_download(id='1GqYjnad42-fri1lxSmT0vFWwYez6_iOv', file='utils/TubeDETR/models/checkpoints/res352/vidstg_k4.pth')
+
     video_input_path = paths.video_input_path
     temporal_frames = paths.temporal_frames
     temporal_model='utils/TubeDETR/models/checkpoints/res352/vidstg_k4.pth'
