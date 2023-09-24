@@ -14,20 +14,33 @@ import json
 from dev_utils.aws_conn.upload_detected_video import upload_highlights_to_s3
 from dev_utils.aws_conn.download_hosted_video import download_video
 from dev_utils.aws_conn.delete_downloaded_video import delete_downloaded_video
+from dev_utils.paths.game import get_game_data
+
+from getstats import populateStats, getShotsMadeFrames
 
 class DetectionService:
     def __init__(self):
         self.weights = 'weights/yolov7-w6-pose.pt'
 
+    def get_statistics(self, game_id, video, dataLogFilePath, teams):
+        stats = populateStats(dataLogFilePath, video, game_id, teams)
+        frames_point_scored, shotsmade = getShotsMadeFrames(dataLogFilePath, video, game_id, teams)
+        return stats, frames_point_scored, shotsmade
+
     def infer_detection(self, game_id: str) -> tuple[Any, Any, Any, Any]:
+        source = 'datasets/videos_input' # temp
+        video, dataLogFilePath = get_game_data(source=source, game_id=game_id)
         with torch.no_grad():
-            stats, video_path, frames_point_scored, shotsmade = detect_all(game_id, [1], [2])
+            detect_all(video, dataLogFilePath)
             # strip_optimizer(self.weights)
-        return stats, video_path, frames_point_scored, shotsmade
+        teams = [[1], [2]]
+        stats, frames_point_scored, shotsmade = self.get_statistics(game_id, video, dataLogFilePath, teams)
+        return stats, frames_point_scored, shotsmade
 
     def run_inference(self, game_id: str) -> tuple[dict, str, str, str, str, int]:
         download_video(game_id)
-        stats, video_inferred_path, frames_point_scored, shots_made = self.infer_detection(game_id)
+        stats, frames_point_scored, shots_made = self.infer_detection(game_id)
+        video_inferred_path = '' # Post Process
         filename = os.path.basename(video_inferred_path)
         if shots_made > 0:
             videos_paths = video_splitter(game_id=game_id, path_to_video=video_inferred_path,

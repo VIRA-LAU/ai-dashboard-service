@@ -21,7 +21,7 @@ from utils.TubeDETR.models.postprocessors import PostProcessSTVG, PostProcess
 from utils.TubeDETR.datasets.video_transforms import prepare, make_video_transforms
 from utils.TubeDETR.util.misc import NestedTensor
 
-def get_args_parser(vid,model,out_dir,out_dir_frames):
+def get_args_parser(video, video_max_len, video_res, model, device, out_dir, out_dir_frames):
     parser = argparse.ArgumentParser("Set TubeDETR", add_help=False)
     parser.add_argument("--run_name", default="", type=str)
 
@@ -117,7 +117,7 @@ def get_args_parser(vid,model,out_dir,out_dir_frames):
         "--output-dir-frames", default=out_dir_frames, help="path where to save frames, empty for no saving"
     )
     parser.add_argument(
-        "--device", default="cuda", help="device to use for training / testing"
+        "--device", default=device, help="device to use for training / testing"
     )
 
     parser.add_argument(
@@ -165,7 +165,7 @@ def get_args_parser(vid,model,out_dir,out_dir_frames):
     )
     parser.add_argument(
         "--video",
-        default="",
+        default=video,
         type=str,
         help="path to a video example for STVG demo",
     )
@@ -184,12 +184,12 @@ def get_args_parser(vid,model,out_dir,out_dir_frames):
     )
     # Video parameters
     parser.add_argument(
-        "--resolution", type=int, default=224, help="spatial resolution of the images"
+        "--resolution", type=int, default=video_res, help="spatial resolution of the images"
     )
     parser.add_argument(
         "--video_max_len",
         type=int,
-        default=200,
+        default=video_max_len,
         help="maximum number of frames for a video",
     )
 
@@ -293,10 +293,10 @@ def get_args_parser(vid,model,out_dir,out_dir_frames):
 
     return parser
 
-def analyze(vid,model,out_dir,out_dir_frames):
+def analyze(video, video_max_len, video_res, model, device, out_dir, out_dir_frames):
     # args
     parser = argparse.ArgumentParser(
-        "TubeDETR training and evaluation script", parents=[get_args_parser(vid,model,out_dir,out_dir_frames)]
+        "TubeDETR training and evaluation script", parents=[get_args_parser(video, video_max_len, video_res, model, device, out_dir, out_dir_frames)]
     )
     args = parser.parse_args()
     device = args.device
@@ -400,7 +400,7 @@ def analyze(vid,model,out_dir,out_dir_frames):
 
     # load checkpoint
     assert args.load
-    checkpoint = torch.load(args.load, map_location="cpu")
+    checkpoint = torch.load(args.load, map_location=args.device)
     if "model_ema" in checkpoint:
         if (
             args.num_queries < 100 and "query_embed.weight" in checkpoint["model_ema"]
@@ -425,7 +425,7 @@ def analyze(vid,model,out_dir,out_dir_frames):
 
     # load video (with eventual start & end) & caption demo examples
     captions = [args.caption]
-    vid_path = vid #args.video
+    vid_path = args.video #args.video
     # get video metadata
     probe = ffmpeg.probe(vid_path)
     video_stream = next(

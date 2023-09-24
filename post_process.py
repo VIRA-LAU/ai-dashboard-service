@@ -21,6 +21,7 @@ from shared.helper.json_helpers import parse_json
 def add_stats(video, stats_asset, stats):
     return
 
+
 def add_score(video, score_asset, scores):
     x = 948
     y = 845
@@ -107,11 +108,7 @@ def load_clips(video_dir, lineups_asset, stats_asset, score_asset, background_as
     return video, lineups, stats, score, background
 
 
-def draw_bbox(video, bbox_coords):
-    return
-
-
-def process_highlights(logs, lineup={}):
+def process_highlights_templates(logs, lineup={}):
     '''
         Team Stats
     '''
@@ -125,7 +122,7 @@ def process_highlights(logs, lineup={}):
     background_asset_dir = 'assets/templates/background_asset.mp4'
 
     video, lineups_asset, stats_asset, score_asset, background_asset = load_clips(video_dir, lineups_asset_dir, stats_asset_dir, score_asset_dir, background_asset_dir)
-    shooting_players, scoring_players = getShootingPlayers(logs, dummy_teams, video_dir)
+    shooting_players, scoring_players, _ = getShootingPlayers(logs, dummy_teams, video_dir)
     scores = getScoreBoard(scoring_players)
     video_post = add_score(video, score_asset, scores)
 
@@ -203,14 +200,12 @@ if __name__ == "__main__":
     '''
     video_dir = 'datasets/videos_input/04183.mp4'
     logs_path = 'datasets/logs/04183_log.yaml'
-    with open(logs_path, "r") as stream:
-        logs = yaml.safe_load(stream)
 
-    # Dummy Lineups
-    dummy_stats_dir = 'assets/post_process.json'
-    dummy_lineup = parse_json(dummy_stats_dir)['lineup']
+    # # Dummy Lineups
+    # dummy_stats_dir = 'assets/post_process.json'
+    # dummy_lineup = parse_json(dummy_stats_dir)['lineup']
 
-    process_highlights(logs, lineup=dummy_lineup)
+    # process_highlights_templates(logs, lineup=dummy_lineup)
 
     '''
         Individual Stats
@@ -220,3 +215,8 @@ if __name__ == "__main__":
 
     # player_bbox = getPlayerBbox(logs['pose_detection'], "player_1")
     # draw_player_bbox(video_dir, player_bbox)
+
+    '''
+        BBox
+    '''
+    print('bboxes')

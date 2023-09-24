@@ -5,7 +5,7 @@ matplotlib>=3.2.2
 numpy>=1.18.5 
 opencv-python>=4.1.1 
 Pillow>=7.1.2 
-PyYAML>=5.3.1 
+PyYAML>=5.3.1
 requests>=2.23.0 
 scipy>=1.4.1 
 
@@ -18,7 +18,7 @@ torchaudio
 -i https://download.pytorch.org/whl/cu118
 
 tqdm>=4.41.0 
-# protobuf<4.21.2
+# protobuf<4.21.3
 tensorboard>=2.4.1 
 
 pandas>=1.1.4, <1.2.0 
@@ -45,3 +45,6 @@ moviepy
 boto3 
 tensorflow>=2.4.1 
 gdown 
+
+# MMPOSE
+yapf==0.40.1

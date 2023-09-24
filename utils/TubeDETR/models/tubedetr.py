@@ -13,7 +13,6 @@ import torch.nn.functional as F
 from torch import nn
 import math
 
-
 import utils.TubeDETR.util.dist as dist
 from utils.TubeDETR.util import box_ops
 from utils.TubeDETR.util.misc import NestedTensor

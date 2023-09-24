@@ -142,11 +142,20 @@ def getPassesPerTeam(logs, teams, video):
     return passes, assists
 
 
-def getShootingPlayers(logs, teams, video):
+def getShootingPlayers(logs, teams, video, players_id = [1, 2, 3, 4, 5]):
     shooting_players = []
     scoring_players = []
+    '''Real time shots count'''
+    shots_count = {}
+    missed_count = {}
+    points_count = {}
 
-    team1, team2 = teams
+    team1, team2 = teams                                
+
+    for i in players_id:
+        missed_count[i] = 0
+        shots_count[i] = 0
+        points_count[i] = 0
 
     '''Get FPS to calculate frames to skip after detection'''
     fps = get_video_framerate(video)
@@ -190,7 +199,27 @@ def getShootingPlayers(logs, teams, video):
                 for player in pose_detections[frame]:
                     curr_player = pose_detections[frame][player][0]
                     player_id = curr_player['player_id']
+                    playerNum = int(player_id)
                     player_bbox = curr_player['bbox_coords']
+
+                    '''Empty entry'''
+                    shooting_players.append({
+                            'frame': frame,
+                            'player': player_id,
+                            'action': None,
+                            'position': None,
+                            'xy_position': None,
+                            'team': "team1" if player_id in team1 else "team2"
+                        })
+                    scoring_players.append({
+                            'frame': frame,
+                            'player': player_id,
+                            'shot': None,
+                            'points': 0,
+                            'player_position': None,
+                            'xy_position': None,
+                            'team': "team1" if player_id in team1 else "team2"
+                        })
                     
                     playerCoords = player_bbox
                     check = []
@@ -199,49 +228,63 @@ def getShootingPlayers(logs, teams, video):
                                     max(playerCoords[i], shooting_coords[i]) >= PERSON_ACTION_PRECISION)
                         
                     if len(check) == 4 and all(check):
+                        shooting_players.remove(shooting_players[-1])
+                        scoring_players.remove(scoring_players[-1])
                         player_position = curr_player['position']
                         xy_position = curr_player['feet_coords']
-                        playerNum = int(player_id)
-                        entry = {
+                        
+                        shooting_players.append({
                             'frame': frame,
                             'player': playerNum,
                             'action': 'shooting',
                             'position': player_position,
                             'xy_position': xy_position,
                             'team': "team1" if playerNum in team1 else "team2"
-                        }
-                        shooting_players.append(entry)
+                        })
 
                 shot_frame = frame + NETBASKET_FRAMES_AFTER_SHOOTING
                 if(basketball_detections[shot_frame] is not None):
                     for basket_dets in basketball_detections[shot_frame]:
                         if(basket_dets['shot']=='netbasket'):
-                            entry = {
+                            points = 2 if player_position == '2_points' else 3
+
+                            # for real-time
+                            shots_count[playerNum] +=1
+                            points_count[playerNum] += points
+
+                            scoring_players.append({
                                 'frame': shot_frame,
                                 'player': playerNum,
                                 'shot': 'scored',
-                                'points': 2 if player_position == '2_points' else 3,
+                                'points': points,
+                                'shots_made': shots_count[playerNum],
+                                'shots_missed': missed_count[playerNum],
+                                'total_points': points_count[playerNum],
                                 'player_position': player_position,
                                 'xy_position': xy_position,
                                 'team': "team1" if playerNum in team1 else "team2"
-                            }
-                            scoring_players.append(entry)
+                            })
                         elif(basket_dets['shot']=='netempty'):
-                            entry = {
+                            missed_count[playerNum] +=1
+
+                            scoring_players.append({
                                 'frame': shot_frame,
                                 'player': playerNum,
                                 'shot': 'missed',
                                 'points': 0,
+                                'shots_made': shots_count[playerNum],
+                                'shots_missed': missed_count[playerNum],
+                                'total_points': points_count[playerNum],
                                 'player_position': player_position,
                                 'xy_position': xy_position,
                                 'team': "team1" if playerNum in team1 else "team2"
-                            }
-                            scoring_players.append(entry)
+                            })
 
                 skip_count = NUMBER_OF_FRAMES_PER_SHOOTING
                 skip_frames = True
-            
-    return shooting_players, scoring_players
+
+
+    return shooting_players, scoring_players, shots_count
 
 
 def getPointsPerTeam(scoring_players, teams):
@@ -422,21 +465,24 @@ def getBoundingBoxes(logs):
                 'label': basket_dets['shot']
             })
 
+        # Actions
         for action_dets in actions_detections[frame]:
             bboxes[frame].append({
                 'bbox_coords': action_dets['bbox_coords'],
                 'label': action_dets['action']
             })
 
+        # Pose
         if(frame in pose_detections):
             for player in pose_detections[frame]:
                 bboxes[frame].append({
                     'bbox_coords': pose_detections[frame][player][0]['bbox_coords'],
-                    'label': pose_detections[frame][player][0]['player_id']
+                    'label': 'person',
+                    'id': pose_detections[frame][player][0]['player_id']
                 })
 
-    print(bboxes)
-    return
+    return bboxes
+
 '''
     Individual Stats
 '''
@@ -519,10 +565,13 @@ def get_video_framerate(video_path):
 '''
     Endpoint Stats
 '''
-def populateStats(logs: dict,
+def populateStats(logs_path: str,
                   video: str,
                   game_id: str,
                   teams: list):
+    
+    with open(logs_path, "r") as stream:
+        logs = yaml.safe_load(stream)
     
     team1, team2 = teams
     # Get All Stats
@@ -574,10 +623,14 @@ def populateStats(logs: dict,
     return allstats, endpoint_stats
 
 
-def getShotsMadeFrames(logs: dict,
+def getShotsMadeFrames(logs_path: str,
                       video: str,
                       game_id: str,
                       teams: list):
+
+    with open(logs_path, "r") as stream:
+        logs = yaml.safe_load(stream)
+
     shotsmade_frames = []
     allstats = getAllStats(logs, video, teams)
     scoring_players = allstats['scoring_players']
@@ -589,7 +642,7 @@ def getShotsMadeFrames(logs: dict,
 
 def getAllStats(logs, video, teams):
     possession = getPossessionPerTeam(logs, teams)
-    shooting_players, scoring_players = getShootingPlayers(logs, teams, video)
+    shooting_players, scoring_players, shots_count = getShootingPlayers(logs, teams, video)
     score_board = getScoreBoard(scoring_players)
     individual_stats = getIndividualStats(scoring_players)
     points_per_team = getPointsPerTeam(scoring_players, teams)
@@ -664,15 +717,18 @@ if __name__ == "__main__":
     with open(logs_path, "r") as stream:
         logs = yaml.safe_load(stream)
 
-    allstats, endpoint_stats = populateStats(logs, video, "game1234", teams)
-    shotsmade_frames, shotsmade = getShotsMadeFrames(logs, video, "game1234", teams)
-    print(allstats)
-    print("1#######################################")
-    print(endpoint_stats)
-    print("2#######################################")
-    print(shotsmade_frames)
-    print("3#######################################")
-    print(shotsmade)
+    shooting_players, scoring_players, _ = getShootingPlayers(logs, teams, video)
+    print(scoring_players)
+
+    # allstats, endpoint_stats = populateStats(logs, video, "game1234", teams)
+    # shotsmade_frames, shotsmade = getShotsMadeFrames(logs, video, "game1234", teams)
+    # print(allstats)
+    # print("1#######################################")
+    # print(endpoint_stats)
+    # print("2#######################################")
+    # print(shotsmade_frames)
+    # print("3#######################################")
+    # print(shotsmade)
 
     # print(possession)
     # print("1#######################################")

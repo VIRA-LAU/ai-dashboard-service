@@ -72,6 +72,7 @@ class PositionEmbeddingSine(nn.Module):
         x = tensor_list.tensors
         mask = tensor_list.mask
         not_mask = ~mask
+        torch.use_deterministic_algorithms(False)
         y_embed = not_mask.cumsum(1, dtype=torch.float32)
         x_embed = not_mask.cumsum(2, dtype=torch.float32)
         if self.normalize:
@@ -91,6 +92,7 @@ class PositionEmbeddingSine(nn.Module):
             (pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), dim=4
         ).flatten(3)
         pos = torch.cat((pos_y, pos_x), dim=3).permute(0, 3, 1, 2)
+        torch.use_deterministic_algorithms(True)
         return pos
 
 
