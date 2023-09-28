@@ -3,6 +3,8 @@ import yaml
 
 import cv2
 
+from dev_utils.paths.game import get_game_data
+
 
 '''
     Team Stats
@@ -108,7 +110,6 @@ def getPassesPerTeam(logs, teams, video):
                     continue
                 else:
                     if (checkIfPlayerHasBall(curr_player['bbox_coords'], basketball_coords)):
-                        print(frame)
                         if player_id in team1:
                             team1_passes += 1
                         elif player_id in team2:
@@ -249,7 +250,7 @@ def getShootingPlayers(logs, teams, video, players_id = [1, 2, 3, 4, 5]):
                             points = 2 if player_position == '2_points' else 3
 
                             # for real-time
-                            shots_count[playerNum] +=1
+                            shots_count[playerNum] += 1
                             points_count[playerNum] += points
 
                             scoring_players.append({
@@ -620,7 +621,7 @@ def populateStats(logs_path: str,
             }
     }
 
-    return allstats, endpoint_stats
+    return endpoint_stats
 
 
 def getShotsMadeFrames(logs_path: str,
@@ -708,17 +709,31 @@ def getAllStats(logs, video, teams):
     return allstats
 
 
-if __name__ == "__main__":
-    video = 'datasets/videos_input/04183.mp4'
-    logs_path = 'datasets/logs/04183_log.yaml'
+def get_statistics(game_id: str=''):
+    videoPath, dataLogFilePath = get_game_data(game_id=game_id)
     team1 = [1]
     team2 = [2]
     teams = [team1, team2]
-    with open(logs_path, "r") as stream:
-        logs = yaml.safe_load(stream)
+    stats = populateStats(logs_path=dataLogFilePath, video=videoPath, game_id=game_id,teams=teams)
+    frames_point_scored, shotsmade = getShotsMadeFrames(dataLogFilePath, videoPath, game_id, teams)
+    return stats, frames_point_scored, shotsmade
 
-    shooting_players, scoring_players, _ = getShootingPlayers(logs, teams, video)
-    print(scoring_players)
+if __name__ == "__main__":
+    # video = 'datasets/videos_input/04183.mp4'
+    # logs_path = 'datasets/logs/04183_log.yaml'
+    # team1 = [1]
+    # team2 = [2]
+    # teams = [team1, team2]
+    # with open(logs_path, "r") as stream:
+    #     logs = yaml.safe_load(stream)
+
+    # shooting_players, scoring_players, _ = getShootingPlayers(logs, teams, video)
+    # print(scoring_players)
+
+    stats, frames_point_scored, shotsmade = get_statistics(game_id='04183')
+    print(stats)
+    print(frames_point_scored)
+    print(shotsmade)
 
     # allstats, endpoint_stats = populateStats(logs, video, "game1234", teams)
     # shotsmade_frames, shotsmade = getShotsMadeFrames(logs, video, "game1234", teams)

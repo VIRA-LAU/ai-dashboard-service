@@ -16,33 +16,25 @@ from dev_utils.aws_conn.download_hosted_video import download_video
 from dev_utils.aws_conn.delete_downloaded_video import delete_downloaded_video
 from dev_utils.paths.game import get_game_data
 
-from getstats import populateStats, getShotsMadeFrames
+from getstats import populateStats, getShotsMadeFrames, get_statistics
 
 class DetectionService:
     def __init__(self):
         self.weights = 'weights/yolov7-w6-pose.pt'
 
-    def get_statistics(self, game_id, video, dataLogFilePath, teams):
-        stats = populateStats(dataLogFilePath, video, game_id, teams)
-        frames_point_scored, shotsmade = getShotsMadeFrames(dataLogFilePath, video, game_id, teams)
-        return stats, frames_point_scored, shotsmade
-
     def infer_detection(self, game_id: str) -> tuple[Any, Any, Any, Any]:
-        source = 'datasets/videos_input' # temp
-        video, dataLogFilePath = get_game_data(source=source, game_id=game_id)
         with torch.no_grad():
-            detect_all(video, dataLogFilePath)
+            detect_all(game_id=game_id)
             # strip_optimizer(self.weights)
-        teams = [[1], [2]]
-        stats, frames_point_scored, shotsmade = self.get_statistics(game_id, video, dataLogFilePath, teams)
-        return stats, frames_point_scored, shotsmade
+        return
 
     def run_inference(self, game_id: str) -> tuple[dict, str, str, str, str, int]:
         download_video(game_id)
-        stats, frames_point_scored, shots_made = self.infer_detection(game_id)
+        self.infer_detection(game_id)
+        stats, frames_point_scored, shotsmade = get_statistics(game_id=game_id)
         video_inferred_path = '' # Post Process
         filename = os.path.basename(video_inferred_path)
-        if shots_made > 0:
+        if shotsmade > 0:
             videos_paths = video_splitter(game_id=game_id, path_to_video=video_inferred_path,
                                           frames_shot_made=frames_point_scored)
             concatenated, video = video_concat(game_id, videos_paths, filename)
@@ -63,4 +55,4 @@ class DetectionService:
         )
         lock_service.LockService().deleteLockFile(game_id)
         print(stats)
-        return stats, video_inferred_path, videos_paths, concatenated, concatenated_with_music, shots_made
+        return stats, video_inferred_path, videos_paths, concatenated, concatenated_with_music, shotsmade

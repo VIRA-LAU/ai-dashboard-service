@@ -33,6 +33,8 @@ from mmpose.utils import register_all_modules
 
 from mmpose.apis import MMPoseInferencer
 
+# os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:1024"
+
 
 def draw_boxes_tracked(img, bbox, identities=None, categories=None, confidences=None, names=None, colors=None):
     """
@@ -86,7 +88,7 @@ def extract_key_frames(dataset_folder: str = "", video_max_len: int = 200, video
 def new_pose(source: str = 'inference/images',
              weights: str='',
              img_size: int = 640,
-             view_img: bool = False,
+             view_img: bool = True,
              dont_save: bool = False,
              track: bool = True):
     
@@ -148,7 +150,7 @@ def new_pose(source: str = 'inference/images',
 
     for path, img, im0s, image, vid_cap in dataset:
 
-        result_generator = inferencer(image, show=view_img)
+        result_generator = inferencer(image, show=view_img) # vis_out_dir='datasets'
         result = next(result_generator)
 
         bboxes=[]
@@ -631,7 +633,7 @@ def detect_pose(weights: str = 'yolov7.pt',
 
     return pose_logs
 
-    
+
 def detect_basketball(weights: str = 'yolov7.pt',
            source: str = 'inference/images',
            img_size: int = 640,
@@ -1067,8 +1069,34 @@ def writeToLog(logs_path, logs):
         with open(logs_path,'w') as yamlfile:
             yaml.safe_dump(logs, yamlfile)
 
+
+def set_max_split_size_mb(model, max_split_size_mb):
+    """
+    Set the max_split_size_mb parameter in PyTorch to avoid fragmentation.
+
+    Args:
+        model (torch.nn.Module): The PyTorch model.
+        max_split_size_mb (int): The desired value for max_split_size_mb in megabytes.
+    """
+    for param in model.parameters():
+        param.requires_grad = False  # Disable gradient calculation to prevent unnecessary memory allocations
+
+    # Dummy forward pass to initialize the memory allocator
+    dummy_input = torch.randn(1, 1)
+    model(dummy_input)
+
+    # Get the current memory allocator state
+    allocator = torch.cuda.memory._get_memory_allocator()
+
+    # Update max_split_size_mb in the memory allocator
+    allocator.set_max_split_size(max_split_size_mb * 1024 * 1024)
+
+    for param in model.parameters():
+        param.requires_grad = True 
+
        
-def detect_all(videoPath, dataLogFilePath):
+def detect_all(game_id: str = ''):
+    videoPath, dataLogFilePath = get_game_data(game_id=game_id)
     print(torch.cuda.is_available())
     torch.cuda.empty_cache()
     with torch.no_grad():
@@ -1095,12 +1123,12 @@ def detect_all(videoPath, dataLogFilePath):
         writeToLog(dataLogFilePath, pose_logs)
 
         # # New Pose
-        # new_pose(source=source + str(vid), weights=pose_weights)
+        # new_pose(source=videoPath, weights=pose_weights)
 
 
 if __name__ == '__main__':
-    # extract_key_frames(dataset_folder='PhoneDatasetOne', video_max_len = 500, video_res = 128, device = "cuda")
-    videoPath, dataLogFilePath = get_game_data(game_id='PhoneDatasetOne_1')
-    detect_all(videoPath, dataLogFilePath)
+    # extract_key_frames(dataset_folder='HardwareDatasetOne', video_max_len = 500, video_res = 128, device = "cpu")
+    
+    detect_all(game_id='PhoneDatasetOne_1')
 
     
