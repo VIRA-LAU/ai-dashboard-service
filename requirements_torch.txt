@@ -1,0 +1,7 @@
+# Check https://pytorch.org/get-started/locally/ for latest PyTorch version and CUDA compatibility
+# Install CUDA from https://developer.nvidia.com/cuda-toolkit-archive
+# Then install PyTorch from https://pytorch.org/get-started/locally/
+torch 
+torchvision 
+torchaudio 
+-i https://download.pytorch.org/whl/cu118

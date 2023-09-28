@@ -28,10 +28,10 @@ from bridge_wrapper import *
 from detection_helpers import *
 from tracking_helpers import *
 
-from mmpose.apis import inference_topdown, init_model
-from mmpose.utils import register_all_modules
+# from mmpose.apis import inference_topdown, init_model
+# from mmpose.utils import register_all_modules
 
-from mmpose.apis import MMPoseInferencer
+# from mmpose.apis import MMPoseInferencer
 
 # os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:1024"
 

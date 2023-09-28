@@ -9,14 +9,6 @@ PyYAML>=5.3.1
 requests>=2.23.0 
 scipy>=1.4.1 
 
-# Check https://pytorch.org/get-started/locally/ for latest PyTorch version and CUDA compatibility
-# Install CUDA from https://developer.nvidia.com/cuda-toolkit-archive
-# Then install PyTorch from https://pytorch.org/get-started/locally/
-torch 
-torchvision 
-torchaudio 
--i https://download.pytorch.org/whl/cu118
-
 tqdm>=4.41.0 
 # protobuf<4.21.3
 tensorboard>=2.4.1 
