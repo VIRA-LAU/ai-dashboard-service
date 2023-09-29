@@ -1,32 +1,20 @@
-import os
-import pathlib
-import threading
-import time
-import shutil
 from pathlib import Path
-import yaml
 
-import numpy as np
-from numpy import random
-import pandas as pd
-
-import cv2
 import torch
-
-from models.experimental import attempt_load
-from persistence.repositories import paths
-from utils.TubeDETR import stvg
-from utils.datasets import LoadImages
-from utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging, xyxy2xywh, non_max_suppression_kpt
-from utils.plots import plot_one_box, output_to_keypoint, plot_kpts
-from utils.torch_utils import select_device, time_synchronized, TracedModel
-from utils.google_utils import gdrive_download
-
-from dev_utils.paths.game import get_game_data
+import yaml
 
 from bridge_wrapper import *
 from detection_helpers import *
+from dev_utils.paths.game import get_game_data
+from persistence.repositories import paths
 from tracking_helpers import *
+from utils.TubeDETR import stvg
+from utils.datasets import LoadImages
+from utils.general import strip_optimizer, set_logging, non_max_suppression_kpt
+from utils.google_utils import gdrive_download
+from utils.plots import output_to_keypoint, plot_kpts
+from utils.torch_utils import time_synchronized
+import dev_utils.handle_db.action_db_handler as action_db
 
 # from mmpose.apis import inference_topdown, init_model
 # from mmpose.utils import register_all_modules
@@ -1018,6 +1006,11 @@ def detect_actions(weights: str = 'yolov7.pt',
                             "action": label,
                             "bbox_coords": [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]
                         }
+                        action_db.insert_into_action_table(
+                            frame_num=frame,
+                            action=label,
+                            bbox_coords= [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]
+                        )
                         actions_logs['action_detection'][frame].append(frame_entry)
 
                     dets_to_sort = np.empty((0, 6))
@@ -1108,19 +1101,22 @@ def detect_all(game_id: str = ''):
             Detect
         '''
         # Actions
+        action_db.create_database(game_id)
+        action_db.create_action_table()
         actions_logs = detect_actions(weights=action_weights, source=videoPath, dont_save=False)
         strip_optimizer(action_weights)
+        action_db.close_db()
         writeToLog(dataLogFilePath, actions_logs)
 
-        # Basketball
-        basketball_logs = detect_basketball(weights=basket_weights, source=videoPath, dont_save=False)
-        strip_optimizer(basket_weights)
-        writeToLog(dataLogFilePath, basketball_logs)
-
-        # Pose
-        pose_logs = detect_pose(weights=pose_weights, source=videoPath, dont_save=False)
-        strip_optimizer(pose_weights)
-        writeToLog(dataLogFilePath, pose_logs)
+        # # Basketball
+        # basketball_logs = detect_basketball(weights=basket_weights, source=videoPath, dont_save=False)
+        # strip_optimizer(basket_weights)
+        # writeToLog(dataLogFilePath, basketball_logs)
+        #
+        # # Pose
+        # pose_logs = detect_pose(weights=pose_weights, source=videoPath, dont_save=False)
+        # strip_optimizer(pose_weights)
+        # writeToLog(dataLogFilePath, pose_logs)
 
         # # New Pose
         # new_pose(source=videoPath, weights=pose_weights)

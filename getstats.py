@@ -623,7 +623,9 @@ def populateStats(logs_path: str,
 
     return endpoint_stats
 
-
+def getsShots(game_id):
+    video, dataLogFilePath = get_game_data(source=source, game_id=game_id)
+    getShotsMadeFrames()
 def getShotsMadeFrames(logs_path: str,
                       video: str,
                       game_id: str,
