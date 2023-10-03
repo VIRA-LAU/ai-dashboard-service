@@ -1,6 +1,7 @@
 import sqlite3
 
 import persistence.repositories.paths as path
+import dev_utils.common.formatting as formatting
 
 _conn = sqlite3.Connection
 _cursor = sqlite3.Cursor
@@ -17,7 +18,7 @@ def connect_to_db(game_id: str):
 
 def getShotsPerTeam() -> tuple[dict, dict]:
     global _conn, _cursor
-    shots = _cursor.execute('''
+    _cursor.execute('''
         SELECT shots.frame_num, player_num, pose_db.bbox_coords,
         shots.bbox_coords, position FROM (SELECT frame_num,
         bbox_coords, ROW_NUMBER() OVER (ORDER BY frame_num)
@@ -32,8 +33,8 @@ def getShotsPerTeam() -> tuple[dict, dict]:
             shooting_frames_with_players.append({
                 'frame': row[0],
                 'player_num': row[1],
-                'pose_coords': list(map(float, row[2][1:-2].split(','))),
-                'shot_coords': list(map(float, row[3][1:-2].split(','))),
+                'pose_coords': formatting.stringToListOfFloat(row[2]),
+                'shot_coords': formatting.stringToListOfFloat(row[3]),
                 'position': row[4]
             })
             frames_added.append(row[0])
@@ -41,7 +42,6 @@ def getShotsPerTeam() -> tuple[dict, dict]:
 
 
 def getShotsPerPlayer(shooting_frames_with_players: list, team1: list, team2: list) -> tuple[dict, dict]:
-    print(shooting_frames_with_players)
     player_ids = getAllPlayerIds()
     team1_player_scores, team2_player_scores = populateTeamLists(player_ids, team1, team2)
     done_frames = []
@@ -72,7 +72,7 @@ def getShotsPerPlayer(shooting_frames_with_players: list, team1: list, team2: li
 def getAllPlayerIds() -> list[int]:
     global _conn, _cursor
     _cursor.execute('''
-            SELECT player_num from pose_db GROUP BY player_num
+            SELECT player_num FROM pose_db GROUP BY player_num
         ''')
     rows = _cursor.fetchall()
     player_ids = []
@@ -101,7 +101,7 @@ def populateTeamLists(player_ids: list, team1: list, team2: list) -> tuple[dict,
 def checkForNetbasket(frame_num: int) -> bool:
     global _conn, _cursor
     table = _cursor.execute('''
-        SELECT shot from basket_db WHERE frame_num BETWEEN (?) AND (?)
+        SELECT shot FROM basket_db WHERE frame_num BETWEEN (?) AND (?)
     ''', [frame_num, frame_num + NUMBER_OF_FRAMES_AFTER_SHOOTING])
     rows = _cursor.fetchall()
     for row in rows:

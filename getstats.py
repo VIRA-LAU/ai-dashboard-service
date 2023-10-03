@@ -605,6 +605,7 @@ def populateStats(logs_path: str,
 
 def getsShots(game_id):
     video, dataLogFilePath = get_game_data(game_id=game_id)
+    video, dataLogFilePath = get_game_data(game_id=game_id)
     return getShotsMadeFrames(dataLogFilePath, video, game_id, [[1], [2]])
 def getShotsMadeFrames(logs_path: str,
                       video: str,
