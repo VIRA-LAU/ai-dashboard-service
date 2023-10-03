@@ -39,7 +39,7 @@ def getPostProcessingData():
         for player in availablePlayers:
             data[i][player] = {
                 'score' : data[i-1][player]['score'] + getAddedPlayerScoreInFrame(i, player, playerMap),
-                'coord' : playerCoords[player][i]
+                'coord' : playerCoords[player][i] if i in playerCoords[player] else None
             }
         data[i]['basket'] = basketCoords[i] if i in basketCoords.keys() else None
         data[i]['netbasket'] = netbasketCoords[i] if i in netbasketCoords.keys() else None
@@ -181,8 +181,10 @@ def getAddedPlayerScoreInFrame(currentFrame: int, currentPlayer: int, playerMap:
         return 0
 def getPlayerWithBall(frame: int, availablePlayers: list, playerCoords, basketCoordsAtFrame) -> int:
     for player in availablePlayers:
-        currentPlayerCoords = playerCoords[player][frame]
-        hasBall = checkIfPlayerHasBall(currentPlayerCoords, basketCoordsAtFrame)
+        currentPlayerCoords = playerCoords[player][frame] if frame in playerCoords[player] else None
+        hasBall = False
+        if currentPlayerCoords is not None:
+            hasBall = checkIfPlayerHasBall(currentPlayerCoords, basketCoordsAtFrame)
         if hasBall:
             return player
     return None
