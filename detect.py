@@ -15,6 +15,8 @@ from utils.google_utils import gdrive_download
 from utils.plots import output_to_keypoint, plot_kpts
 from utils.torch_utils import time_synchronized
 import dev_utils.handle_db.action_db_handler as action_db
+import dev_utils.handle_db.basket_db_handler as basket_db
+import dev_utils.handle_db.pose_db_handler as pose_db
 
 # from mmpose.apis import inference_topdown, init_model
 # from mmpose.utils import register_all_modules
@@ -587,6 +589,13 @@ def detect_pose(weights: str = 'yolov7.pt',
                                     "feet_coords": list(xy[-1]),
                                     "position": position
                                 }
+                                pose_db.insert_into_pose_table(
+                                    frame_num=frame,
+                                    player_num= int(identities),
+                                    bbox_coords= bbox_xyxy.tolist(),
+                                    feet_coords= list(xy[-1]),
+                                    position= position
+                                )
                                 pose_logs['pose_detection'][frame][player_id].append(player_entry)
 
                                 # Draw Boxes on Image
@@ -803,6 +812,11 @@ def detect_basketball(weights: str = 'yolov7.pt',
                             "shot": label,
                             "bbox_coords": [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]
                         }
+                        basket_db.insert_into_basket_table(
+                            frame_num=frame,
+                            shot=label,
+                            bbox_coords= [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]
+                        )
                         basketball_logs['basketball_detection'][frame].append(frame_entry)
 
                     dets_to_sort = np.empty((0, 6))
@@ -1108,15 +1122,21 @@ def detect_all(game_id: str = ''):
         action_db.close_db()
         writeToLog(dataLogFilePath, actions_logs)
 
-        # # Basketball
-        # basketball_logs = detect_basketball(weights=basket_weights, source=videoPath, dont_save=False)
-        # strip_optimizer(basket_weights)
-        # writeToLog(dataLogFilePath, basketball_logs)
-        #
-        # # Pose
-        # pose_logs = detect_pose(weights=pose_weights, source=videoPath, dont_save=False)
-        # strip_optimizer(pose_weights)
-        # writeToLog(dataLogFilePath, pose_logs)
+        # Basketball
+        basket_db.create_database(game_id)
+        basket_db.create_basket_table()
+        basketball_logs = detect_basketball(weights=basket_weights, source=videoPath, dont_save=False)
+        strip_optimizer(basket_weights)
+        basket_db.close_db()
+        writeToLog(dataLogFilePath, basketball_logs)
+
+        # Pose
+        pose_db.create_database(game_id)
+        pose_db.create_pose_table()
+        pose_logs = detect_pose(weights=pose_weights, source=videoPath, dont_save=False)
+        strip_optimizer(pose_weights)
+        pose_db.close_db()
+        writeToLog(dataLogFilePath, pose_logs)
 
         # # New Pose
         # new_pose(source=videoPath, weights=pose_weights)
@@ -1125,6 +1145,6 @@ def detect_all(game_id: str = ''):
 if __name__ == '__main__':
     # extract_key_frames(dataset_folder='HardwareDatasetOne', video_max_len = 500, video_res = 128, device = "cpu")
     
-    detect_all(game_id='PhoneDatasetOne_1')
+    detect_all(game_id='04183')
 
     

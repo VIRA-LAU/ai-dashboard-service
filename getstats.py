@@ -160,7 +160,6 @@ def getShootingPlayers(logs, teams, video, players_id = [1, 2, 3, 4, 5]):
 
     '''Get FPS to calculate frames to skip after detection'''
     fps = get_video_framerate(video)
-
     if(fps==60):
         NUMBER_OF_FRAMES_PER_SHOOTING = int(fps / 1.8)
         NETBASKET_FRAMES_AFTER_SHOOTING = int(fps * 1.3)
@@ -199,28 +198,7 @@ def getShootingPlayers(logs, teams, video, players_id = [1, 2, 3, 4, 5]):
                 # Get the shooting player
                 for player in pose_detections[frame]:
                     curr_player = pose_detections[frame][player][0]
-                    player_id = curr_player['player_id']
-                    playerNum = int(player_id)
                     player_bbox = curr_player['bbox_coords']
-
-                    '''Empty entry'''
-                    shooting_players.append({
-                            'frame': frame,
-                            'player': player_id,
-                            'action': None,
-                            'position': None,
-                            'xy_position': None,
-                            'team': "team1" if player_id in team1 else "team2"
-                        })
-                    scoring_players.append({
-                            'frame': frame,
-                            'player': player_id,
-                            'shot': None,
-                            'points': 0,
-                            'player_position': None,
-                            'xy_position': None,
-                            'team': "team1" if player_id in team1 else "team2"
-                        })
                     
                     playerCoords = player_bbox
                     check = []
@@ -229,10 +207,10 @@ def getShootingPlayers(logs, teams, video, players_id = [1, 2, 3, 4, 5]):
                                     max(playerCoords[i], shooting_coords[i]) >= PERSON_ACTION_PRECISION)
                         
                     if len(check) == 4 and all(check):
-                        shooting_players.remove(shooting_players[-1])
-                        scoring_players.remove(scoring_players[-1])
                         player_position = curr_player['position']
                         xy_position = curr_player['feet_coords']
+                        player_id = curr_player['player_id']
+                        playerNum = int(player_id)
                         
                         shooting_players.append({
                             'frame': frame,
@@ -245,6 +223,7 @@ def getShootingPlayers(logs, teams, video, players_id = [1, 2, 3, 4, 5]):
 
                 shot_frame = frame + NETBASKET_FRAMES_AFTER_SHOOTING
                 if(basketball_detections[shot_frame] is not None):
+                    print(playerNum)
                     for basket_dets in basketball_detections[shot_frame]:
                         if(basket_dets['shot']=='netbasket'):
                             points = 2 if player_position == '2_points' else 3
@@ -312,6 +291,7 @@ def getPointsPerTeam(scoring_players, teams):
 
 
 def getPointsPerPlayer(scoring_players):
+    print(scoring_players)
     points_per_player = {}
     for entry in scoring_players:
         player = entry['player']
@@ -598,12 +578,12 @@ def populateStats(logs_path: str,
 
     for player in points_per_player:
         if int(player) in team1:
-            team1Players[player]['points'] += points_per_player[player]['points']
-            team1Players[player]['shotsmade'] += points_per_player[player]['shotsmade']
+            team1Players[int(player)]['points'] += points_per_player[player]['points']
+            team1Players[int(player)]['shotsmade'] += points_per_player[player]['shotsmade']
 
         if int(player) in team2:
-            team2Players[player]['points'] += points_per_player[player]['points']
-            team2Players[player]['shotsmade'] += points_per_player[player]['shotsmade']
+            team2Players[int(player)]['points'] += points_per_player[player]['points']
+            team2Players[int(player)]['shotsmade'] += points_per_player[player]['shotsmade']
 
     endpoint_stats = {
         'game_id' : game_id,
@@ -624,8 +604,8 @@ def populateStats(logs_path: str,
     return endpoint_stats
 
 def getsShots(game_id):
-    video, dataLogFilePath = get_game_data(source=source, game_id=game_id)
-    getShotsMadeFrames()
+    video, dataLogFilePath = get_game_data(game_id=game_id)
+    return getShotsMadeFrames(dataLogFilePath, video, game_id, [[1], [2]])
 def getShotsMadeFrames(logs_path: str,
                       video: str,
                       game_id: str,
