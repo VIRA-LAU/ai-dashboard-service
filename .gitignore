@@ -2,6 +2,25 @@
 *.png
 *.mp4
 *.avi
+env/
 
+traced_model.pt
 
+datasets/*
+assets/templates/*
+assets/post_process.json
+
+.idea/
+traced_model.pt
+__pycache__
+
+utils/__pycache__/
+utils/TubeDETR/__pycache__/
+utils/TubeDETR/util/__pycache__/
+utils/TubeDETR/datasets/__pycache__/
+utils/TubeDETR/models/__pycache__/
+utils/TubeDETR/models/checkpoints/*
+!utils/TubeDETR/models/checkpoints/.gitkeep
+
+weights/*
 

@@ -22,6 +22,8 @@ from utils.google_utils import gsutil_getsize
 from utils.metrics import fitness
 from utils.torch_utils import init_torch_seeds
 
+from ultralytics.utils import ops
+
 # Settings
 torch.set_printoptions(linewidth=320, precision=5, profile='long')
 np.set_printoptions(linewidth=320, formatter={'float_kind': '{:11.5g}'.format})  # format short g, %precision=5
@@ -317,29 +319,66 @@ def resample_segments(segments, n=1000):
     return segments
 
 
-def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None):
+# def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None):
+#     # Rescale coords (xyxy) from img1_shape to img0_shape
+#     if ratio_pad is None:  # calculate from img0_shape
+#         gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
+#         pad = (img1_shape[1] - img0_shape[1] * gain) / 2, (img1_shape[0] - img0_shape[0] * gain) / 2  # wh padding
+#     else:
+#         gain = ratio_pad[0][0]
+#         pad = ratio_pad[1]
+
+#     coords[:, [0, 2]] -= pad[0]  # x padding
+#     coords[:, [1, 3]] -= pad[1]  # y padding
+#     coords[:, :4] /= gain
+#     clip_coords(coords, img0_shape)
+#     return coords
+
+def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None, kpt_label=False, step=2):
     # Rescale coords (xyxy) from img1_shape to img0_shape
     if ratio_pad is None:  # calculate from img0_shape
         gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
         pad = (img1_shape[1] - img0_shape[1] * gain) / 2, (img1_shape[0] - img0_shape[0] * gain) / 2  # wh padding
     else:
-        gain = ratio_pad[0][0]
+        gain = ratio_pad[0]
         pad = ratio_pad[1]
-
-    coords[:, [0, 2]] -= pad[0]  # x padding
-    coords[:, [1, 3]] -= pad[1]  # y padding
-    coords[:, :4] /= gain
-    clip_coords(coords, img0_shape)
+    if isinstance(gain, (list, tuple)):
+        gain = gain[0]
+    if not kpt_label:
+        coords[:, [0, 2]] -= pad[0]  # x padding
+        coords[:, [1, 3]] -= pad[1]  # y padding
+        coords[:, [0, 2]] /= gain
+        coords[:, [1, 3]] /= gain
+        clip_coords(coords[0:4], img0_shape,kpt_label=kpt_label)
+        #coords[:, 0:4] = coords[:, 0:4].round()
+    else:
+        coords[:, 0::step] -= pad[0]  # x padding
+        coords[:, 1::step] -= pad[1]  # y padding
+        coords[:, 0::step] /= gain
+        coords[:, 1::step] /= gain
+        clip_coords(coords, img0_shape, step=step, kpt_label=kpt_label)
+        #coords = coords.round()
     return coords
 
 
-def clip_coords(boxes, img_shape):
-    # Clip bounding xyxy bounding boxes to image shape (height, width)
-    boxes[:, 0].clamp_(0, img_shape[1])  # x1
-    boxes[:, 1].clamp_(0, img_shape[0])  # y1
-    boxes[:, 2].clamp_(0, img_shape[1])  # x2
-    boxes[:, 3].clamp_(0, img_shape[0])  # y2
+# def clip_coords(boxes, img_shape):
+#     # Clip bounding xyxy bounding boxes to image shape (height, width)
+#     boxes[:, 0].clamp_(0, img_shape[1])  # x1
+#     boxes[:, 1].clamp_(0, img_shape[0])  # y1
+#     boxes[:, 2].clamp_(0, img_shape[1])  # x2
+#     boxes[:, 3].clamp_(0, img_shape[0])  # y2
 
+def clip_coords(boxes, img_shape, step=2,kpt_label=False):
+    # Clip bounding xyxy bounding boxes to image shape (height, width)
+    if (kpt_label):
+        boxes[:, 0::step].clamp_(0, img_shape[1])  # x1
+        boxes[:, 1::step].clamp_(0, img_shape[0])  # y1
+    else:
+        # Clip bounding xyxy bounding boxes to image shape (height, width)
+        boxes[:, 0].clamp_(0, img_shape[1])  # x1
+        boxes[:, 1].clamp_(0, img_shape[0])  # y1
+        boxes[:, 2].clamp_(0, img_shape[1])  # x2
+        boxes[:, 3].clamp_(0, img_shape[0])  # y2
 
 def bbox_iou(box1, box2, x1y1x2y2=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7):
     # Returns the IoU of box1 to box2. box1 is 4, box2 is nx4
@@ -888,3 +927,27 @@ def increment_path(path, exist_ok=True, sep=''):
         i = [int(m.groups()[0]) for m in matches if m]  # indices
         n = max(i) + 1 if i else 2  # increment number
         return f"{path}{sep}{n}"  # update path
+    
+
+
+def write_mot_results(txt_path, results, frame_idx):
+    nr_dets = len(results.boxes)
+    frame_idx = torch.full((1, 1), frame_idx + 1)
+    frame_idx = frame_idx.repeat(nr_dets, 1)
+    dont_care = torch.full((nr_dets, 1), -1)
+    mot = torch.cat([
+        frame_idx,
+        results.boxes.id.unsqueeze(1).to('cpu'),
+        ops.xyxy2ltwh(results.boxes.xyxy).to('cpu'),
+        results.boxes.conf.unsqueeze(1).to('cpu'),
+        results.boxes.cls.unsqueeze(1).to('cpu'),
+        dont_care
+    ], dim=1)
+
+    # create parent folder
+    txt_path.parent.mkdir(parents=True, exist_ok=True)
+    # create mot txt file
+    txt_path.touch(exist_ok=True)
+
+    with open(str(txt_path), 'ab+') as f:  # append binary mode
+        np.savetxt(f, mot.numpy(), fmt='%d')  # save as ints instead of scientific notation

@@ -6,7 +6,7 @@ from moviepy.editor import VideoFileClip, concatenate_videoclips
 from persistence.repositories import paths
 
 
-def video_concat(path_to_highlights: list, filename: str) -> tuple:
+def video_concat(game_id: str, path_to_highlights: list, filename: str) -> tuple:
     """
     Concatenate videos of shots made
     :param filename:
@@ -20,6 +20,7 @@ def video_concat(path_to_highlights: list, filename: str) -> tuple:
 
     final_clip = concatenate_videoclips(clips)
     print(final_clip.duration)
-    path_to_return = os.path.join(paths.concatenated_path, filename)
+    os.makedirs(os.path.join(paths.concatenated_path, game_id), exist_ok=True)
+    path_to_return = os.path.join(paths.concatenated_path, game_id, filename)
     final_clip.write_videofile(path_to_return, codec="libx264")
     return path_to_return, final_clip
