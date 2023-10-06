@@ -5,9 +5,6 @@ import numpy as np
 
 import cv2
 
-from moviepy.editor import *
-from moviepy.video.fx.resize import resize
-
 from getstats import *
 from shared.helper.json_helpers import parse_json
 
