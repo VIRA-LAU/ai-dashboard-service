@@ -1,3 +1,4 @@
+import json
 import sqlite3
 
 import persistence.repositories.paths as path
@@ -87,12 +88,12 @@ def getShotsPerPlayer(shooting_frames_with_players: list) -> dict:
                          max(player_bbox[i], shooting_coords[i]) >= PERSON_ACTION_PRECISION)
         if len(check) == 4 and all(check):
             if frame not in done_frames:
-                shotmade = checkForNetbasket(frame)
+                shotmade, net_frame = checkForNetbasket(frame)
                 added_points = 2 if element['position'] == '2_points' else 3
                 if shotmade:
-                    playerMap[player]['scorePerFrame'][frame] = added_points
+                    playerMap[player]['scorePerFrame'][net_frame] = added_points
                     playerMap[player]['recentScore'] += added_points
-                done_frames.append(frame)
+                done_frames.append(net_frame)
     return playerMap
 def getBasketCoordinatesPerFrame() -> dict:
     global _conn, _cursor
@@ -128,16 +129,16 @@ def populatePlayerMap(player_ids: list) -> tuple[dict, dict]:
     return playerMap
 
 
-def checkForNetbasket(frame_num: int) -> bool:
+def checkForNetbasket(frame_num: int) -> list:
     global _conn, _cursor
     table = _cursor.execute('''
-        SELECT shot FROM basket_db WHERE frame_num BETWEEN (?) AND (?)
+        SELECT frame_num, shot FROM basket_db WHERE frame_num BETWEEN (?) AND (?)
     ''', [frame_num, frame_num + NUMBER_OF_FRAMES_AFTER_SHOOTING])
     rows = _cursor.fetchall()
     for row in rows:
-        if (row[0]) == 'netbasket':
-            return True
-    return False
+        if (row[1]) == 'netbasket':
+            return [True, row[0]]
+    return [False, -1]
 def getNetbasketCoordinatesPerFrame() -> dict:
     global _conn, _cursor
     max_frames = getMaxFrame()
@@ -153,7 +154,7 @@ def getNetbasketCoordinatesPerFrame() -> dict:
     netbasket_coords = {}
     for i in range(1, max_frames+1):
         if i in frames_netbasket:
-            netbasket_coords[i] = coords_netbasket[i]
+            netbasket_coords[i] = formatting.stringToListOfFloat(coords_netbasket[i])
         else:
             netbasket_coords[i] = []
     return netbasket_coords
@@ -217,4 +218,6 @@ def getCoordsRatio(coord1, coord2):
 
 if __name__ == '__main__':
     connect_to_db('04181')
-    print(getPostProcessingData())
+    data = getPostProcessingData()
+    with open('data.json', 'w') as file:
+        file.write(json.dumps(data))
