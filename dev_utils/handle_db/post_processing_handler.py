@@ -16,7 +16,8 @@ def connect_to_db(game_id: str):
     global _conn, _cursor
     _conn = sqlite3.connect(path.logs_path / f'{game_id}_logs.db')
     _cursor = _conn.cursor()
-def getPostProcessingData():
+def getPostProcessingData(game_id: str):
+    connect_to_db(game_id)
     global _conn, _cursor
     availablePlayers = getAllPlayerIds()
     playerMap = getPlayerShotsPerFrame()

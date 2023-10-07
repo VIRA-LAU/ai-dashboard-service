@@ -65,4 +65,3 @@ scikit-learn
 ultralytics
 loguru
 ftfy
-lap

@@ -12,5 +12,6 @@
   "label_path": "datasets/labels/",
   "logs_path" : "datasets/logs/",
   "locks_path" : "datasets/locks/",
+  "post_process_path" : "datasets/post_process/",
   "hosted_videos_input_path": "https://fitchain-ai-videos.s3.eu-north-1.amazonaws.com/videos_input/"
 }

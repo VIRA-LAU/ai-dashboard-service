@@ -223,7 +223,6 @@ def getShootingPlayers(logs, teams, video, players_id = [1, 2, 3, 4, 5]):
 
                 shot_frame = frame + NETBASKET_FRAMES_AFTER_SHOOTING
                 if(basketball_detections[shot_frame] is not None):
-                    print(playerNum)
                     for basket_dets in basketball_detections[shot_frame]:
                         if(basket_dets['shot']=='netbasket'):
                             points = 2 if player_position == '2_points' else 3
@@ -291,7 +290,6 @@ def getPointsPerTeam(scoring_players, teams):
 
 
 def getPointsPerPlayer(scoring_players):
-    print(scoring_players)
     points_per_player = {}
     for entry in scoring_players:
         player = entry['player']
@@ -605,7 +603,6 @@ def populateStats(logs_path: str,
 
 def getsShots(game_id):
     video, dataLogFilePath = get_game_data(game_id=game_id)
-    video, dataLogFilePath = get_game_data(game_id=game_id)
     return getShotsMadeFrames(dataLogFilePath, video, game_id, [[1], [2]])
 def getShotsMadeFrames(logs_path: str,
                       video: str,
@@ -618,6 +615,7 @@ def getShotsMadeFrames(logs_path: str,
     shotsmade_frames = []
     allstats = getAllStats(logs, video, teams)
     scoring_players = allstats['scoring_players']
+    print(scoring_players)
     for entry in scoring_players:
         if(entry['shot']=='scored'):
             shotsmade_frames.append(entry['frame'])

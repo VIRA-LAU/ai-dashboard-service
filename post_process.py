@@ -7,23 +7,26 @@ import cv2
 
 from getstats import *
 from shared.helper.json_helpers import parse_json
-
+from dev_utils.paths.game import get_game_data
+from dev_utils.handle_db.post_processing_handler import getPostProcessingData
+import persistence.repositories.paths as paths
 
 '''
     Individual Stats
 '''
 
-def process_video(video_path, data):
+def process_video(game_id: str):
+    video_path = get_game_data(game_id)[0]
+    data = getPostProcessingData(game_id)
     video = cv2.VideoCapture(video_path)
     framerate = math.ceil(video.get(cv2.CAP_PROP_FPS))
 
     output = cv2.VideoWriter(
-        "datasets/post_process/output.mp4", cv2.VideoWriter_fourcc(*'mp4v'), framerate, (1920, 1080))
+        str(paths.post_process_path / f'{game_id}.mp4'), cv2.VideoWriter_fourcc(*'mp4v'), framerate, (1920, 1080))
     
     while(True):
         ret, frame = video.read()
         frame_num = int(video.get(cv2.CAP_PROP_POS_FRAMES))
-        frame_num = str(frame_num)
         if(ret):
             tl = round(0.002 * (frame.shape[0] + frame.shape[1]) / 2) + 1
             tf = max(tl - 3, 1)
@@ -32,7 +35,6 @@ def process_video(video_path, data):
                 label = None
 
                 if player_with_ball is not None:
-                    player_with_ball = str(player_with_ball)
                     if data[frame_num][player_with_ball]['coord'] is not None:
                         p_x1, p_y1, p_x2, p_y2 = data[frame_num][player_with_ball]['coord']
                         cv2.rectangle(frame, (int(p_x1), int(p_y1)), (int(p_x2), int(p_y2)), (53, 103, 240), tl)
@@ -72,9 +74,9 @@ if __name__ == "__main__":
     '''
         Video, Logs
     '''
-    video_dir = 'datasets/videos_input/04181.mp4'
-    data_path = 'datasets/logs/data.json'
-    data = parse_json(data_path)
+    # video_dir = 'datasets/videos_input/04181.mp4'
+    # data_path = 'datasets/logs/data.json'
+    # data = parse_json(data_path)
 
-    process_video(video_dir, data)
+    process_video('04181')
 

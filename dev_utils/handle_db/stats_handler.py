@@ -15,8 +15,32 @@ def connect_to_db(game_id: str):
     _conn = sqlite3.connect(path.logs_path / f'{game_id}_logs.db')
     _cursor = _conn.cursor()
 
-
-def getShotsPerTeam() -> tuple[dict, dict]:
+def getAPIStats(game_id: str, team1: list, team2: list) -> dict:
+    connect_to_db(game_id)
+    team1_player_points, team2_player_points = getShotsPerTeam(team1, team2)
+    return {
+        'team1' : {
+            'players' : team1_player_points,
+            'points' : getTotalPerTeam(team1_player_points)
+        },
+        'team2' : {
+            'players' : team2_player_points,
+            'points' : getTotalPerTeam(team2_player_points)
+        }
+    }
+def getNetbasketCoordinatesFrames(game_id: str) -> list[list, int]:
+    global _conn, _cursor
+    connect_to_db(game_id)
+    _cursor.execute('''
+        SELECT frame_num FROM basket_db WHERE shot = 'netbasket'
+    ''')
+    rows = _cursor.fetchall()
+    frames_netbasket = []
+    for row in rows:
+        if len(frames_netbasket) == 0 or row[0] - frames_netbasket[-1] >= 60:
+            frames_netbasket.append(row[0])
+    return [frames_netbasket, len(frames_netbasket)]
+def getShotsPerTeam(team1: list, team2: list) -> tuple[dict, dict]:
     global _conn, _cursor
     _cursor.execute('''
         SELECT shots.frame_num, player_num, pose_db.bbox_coords,
@@ -38,7 +62,7 @@ def getShotsPerTeam() -> tuple[dict, dict]:
                 'position': row[4]
             })
             frames_added.append(row[0])
-    return getShotsPerPlayer(shooting_frames_with_players, [1], [2])
+    return getShotsPerPlayer(shooting_frames_with_players, team1, team2)
 
 
 def getShotsPerPlayer(shooting_frames_with_players: list, team1: list, team2: list) -> tuple[dict, dict]:
@@ -128,7 +152,5 @@ def getPlayersAndBasket():
 
 
 if __name__ == '__main__':
-    connect_to_db('04183')
-    team1, team2 = getShotsPerTeam()
-    print(team1)
-    print(team2)
+    #print(getAPIStats('04181', [1], [2]))
+    print(getNetbasketCoordinatesFrames('04183'))

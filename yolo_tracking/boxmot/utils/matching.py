@@ -1,6 +1,6 @@
 # Mikel Broström 🔥 Yolo Tracking 🧾 AGPL-3.0 license
 
-import lap
+#import lap
 import numpy as np
 import scipy
 import torch
