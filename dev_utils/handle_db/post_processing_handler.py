@@ -9,6 +9,7 @@ _cursor = sqlite3.Cursor
 FRAMES_DIFF_FOR_SHOTS_MADE = 90
 NUMBER_OF_FRAMES_AFTER_SHOOTING = 120
 PERSON_ACTION_PRECISION = 0.92
+PLAYER_WITH_BALL_PRECISION = 0.92
 
 
 def connect_to_db(game_id: str):
@@ -38,13 +39,15 @@ def getPostProcessingData():
     for i in range(2, maxFrames+1):
         data[i] = {}
         for player in availablePlayers:
+            player_with_ball = getPlayerWithBall(i, availablePlayers, playerCoords, basketCoords[i])\
+                if i in basketCoords.keys() else None
             data[i][player] = {
                 'score' : data[i-1][player]['score'] + getAddedPlayerScoreInFrame(i, player, playerMap),
                 'coord' : playerCoords[player][i] if i in playerCoords[player] else None
             }
         data[i]['basket'] = basketCoords[i] if i in basketCoords.keys() else None
         data[i]['netbasket'] = netbasketCoords[i] if i in netbasketCoords.keys() else None
-        data[i]['player_with_ball'] = getPlayerWithBall(i, availablePlayers, playerCoords, basketCoords[i]) if i in basketCoords.keys() else None
+        data[i]['player_with_ball'] = player_with_ball if player_with_ball is not None else data[i-1]['player_with_ball']
     return data
 
 
@@ -199,13 +202,15 @@ def checkIfPlayerHasBall(playerCoords, basketballCoords):
     basket_y = (basket_y1 + basket_y2) / 2
     if player_x1 <= basket_x and basket_x <= player_x2:
         check.append(True)
-    elif getCoordsRatio(basket_x, player_x1) >= 0.92 or getCoordsRatio(basket_x, player_x2) >= 0.92:
+    elif (getCoordsRatio(basket_x, player_x1) >= PLAYER_WITH_BALL_PRECISION
+          or getCoordsRatio(basket_x, player_x2) >= PLAYER_WITH_BALL_PRECISION):
         check.append(True)
     else:
         check.append(False)
     if player_y1 <= basket_y and basket_y <= player_y2:
         check.append(True)
-    elif getCoordsRatio(basket_y, player_y1) >= 0.92 or getCoordsRatio(basket_y, player_y2) >= 0.92:
+    elif (getCoordsRatio(basket_y, player_y1) >= PLAYER_WITH_BALL_PRECISION
+          or getCoordsRatio(basket_y, player_y2) >= PLAYER_WITH_BALL_PRECISION):
         check.append(True)
     else:
         check.append(False)

@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import os.path
 from typing import Any
+import os.path
+from typing import Any
 
 import torch
+import requests
 import requests
 from core.song_player import give_song
 from core.video_concat import video_concat
@@ -17,9 +20,19 @@ from dev_utils.aws_conn.delete_downloaded_video import delete_downloaded_video
 from dev_utils.paths.game import get_game_data
 
 from getstats import populateStats, getShotsMadeFrames, get_statistics
+from detect import detect_all
+import application.service.lock_handler.lock_service as lock_service
+import json
+from dev_utils.aws_conn.upload_detected_video import upload_highlights_to_s3
+from dev_utils.aws_conn.download_hosted_video import download_video
+from dev_utils.aws_conn.delete_downloaded_video import delete_downloaded_video
+from dev_utils.paths.game import get_game_data
+
+from getstats import populateStats, getShotsMadeFrames, get_statistics
 
 class DetectionService:
     def __init__(self):
+        self.weights = 'weights/yolov7-w6-pose.pt'
         self.weights = 'weights/yolov7-w6-pose.pt'
 
     def infer_detection(self, game_id: str) -> tuple[Any, Any, Any, Any]:

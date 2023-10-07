@@ -1,4 +1,6 @@
 from pathlib import Path
+import yaml
+from functools import partial
 
 import torch
 import yaml
@@ -8,7 +10,6 @@ from detection_helpers import *
 from dev_utils.paths.game import get_game_data
 from persistence.repositories import paths
 from tracking_helpers import *
-from utils.TubeDETR import stvg
 from utils.datasets import LoadImages
 from utils.general import strip_optimizer, set_logging, non_max_suppression_kpt
 from utils.google_utils import gdrive_download
@@ -17,6 +18,28 @@ from utils.torch_utils import time_synchronized
 import dev_utils.handle_db.action_db_handler as action_db
 import dev_utils.handle_db.basket_db_handler as basket_db
 import dev_utils.handle_db.pose_db_handler as pose_db
+
+from utils.args import *
+from utils.frame_extraction import extract_frames
+
+from ultralytics import YOLO
+
+from yolo_tracking.boxmot import TRACKERS
+from yolo_tracking.boxmot.tracker_zoo import create_tracker
+from yolo_tracking.boxmot.utils import ROOT, WEIGHTS
+from yolo_tracking.boxmot.utils.checks import TestRequirements
+from yolo_tracking.detectors import get_yolo_inferer
+
+__tr = TestRequirements()
+__tr.check_packages(('ultralytics @ git+https://github.com/mikel-brostrom/ultralytics.git', ))  # install
+
+from ultralytics import YOLO
+from ultralytics.data.utils import VID_FORMATS
+from ultralytics.utils.plotting import save_one_box
+
+from utils.general import write_mot_results
+
+from yolo_tracking.boxmot.appearance import reid_export
 
 
 def draw_boxes_tracked(img, bbox, identities=None, categories=None, confidences=None, names=None, colors=None):
@@ -48,24 +71,201 @@ def draw_boxes_tracked(img, bbox, identities=None, categories=None, confidences=
     c2 = x1 + t_size[0], y1 - t_size[1] - 3
     cv2.rectangle(img, (x1, y1), c2, color, -1, cv2.LINE_AA)  # filled
     cv2.putText(img, label, (x1, y1 - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
+
     return img
 
 
-def extract_key_frames(dataset_folder: str = "", video_max_len: int = 200, video_res: int = 224, device: str = "cuda"):
-    '''
-        Temporal Analysis
-    '''
-    if len(os.listdir('utils/TubeDETR/models/checkpoints/res352/')) == 0:
-        ckpt = gdrive_download(id='1GqYjnad42-fri1lxSmT0vFWwYez6_iOv', file='utils/TubeDETR/models/checkpoints/res352/vidstg_k4.pth')
-
-    temporal_model='utils/TubeDETR/models/checkpoints/res352/vidstg_k4.pth' # model that performs temporal analysis
+def extract_key_frames(dataset_folder: str = "", video_max_len: int = 200, fps: int = 5):
     out_dir = paths.video_input_path # output video with less frames
     out_dir_frames = paths.temporal_frames  # output frames
 
     source = os.path.join(paths.temporal_videos_input_path, dataset_folder)
     for video in os.listdir(source):
         vid_path = os.path.join(source, video)
-        stvg.analyze(vid_path, video_max_len, video_res, temporal_model, device, out_dir, out_dir_frames)
+        extract_frames(vid_path, fps, video_max_len, out_dir_frames)
+
+
+def on_predict_start(predictor, persist=False):
+    """
+    Initialize trackers for object tracking during prediction.
+
+    Args:
+        predictor (object): The predictor object to initialize trackers for.
+        persist (bool, optional): Whether to persist the trackers if they already exist. Defaults to False.
+    """
+
+    assert predictor.custom_args.tracking_method in TRACKERS, \
+        f"'{predictor.custom_args.tracking_method}' is not supported. Supported ones are {TRACKERS}"
+
+    tracking_config = os.path.join('yolo_tracking/boxmot/configs',(predictor.custom_args.tracking_method + '.yaml'))
+    trackers = []
+    for i in range(predictor.dataset.bs):
+        tracker = create_tracker(
+            predictor.custom_args.tracking_method,
+            tracking_config,
+            predictor.custom_args.reid_model,
+            predictor.device,
+            predictor.custom_args.half,
+            predictor.custom_args.per_class
+        )
+        # motion only modeles do not have
+        if hasattr(tracker, 'model'):
+            tracker.model.warmup()
+        trackers.append(tracker)
+
+    predictor.trackers = trackers
+
+
+def instance_segmentation(weights: str = 'yolov8.pt',
+                        reid_model: Path = '',
+                        tracking_method: str = 'deepocsort',
+                        source: str='',
+                        conf: float=0.6,
+                        iou: float=0.45,
+                        show: bool=False,
+                        img_size: int=640,
+                        stream: bool=True,
+                        device= torch.device("cuda:0"),
+                        half: bool=True,
+                        show_conf: bool=False,
+                        save_txt: bool=False,
+                        show_labels: bool=True,
+                        save: bool=True,
+                        save_mot: bool=True,
+                        save_id_crops: bool=True,
+                        verbose: bool=True,
+                        exist_ok: bool=False,
+                        save_dir: str = 'datasets/videos_inferred',
+                        name: str = 'segmentation',
+                        classes: int = 0,
+                        per_class: bool = False,
+                        vid_stride: int = 1,
+                        line_width: int = 3):
+    
+    args = parse_segmentation(weights=weights,
+                        reid_model=reid_model,
+                        tracking_method=tracking_method,
+                        source=source,
+                        conf=conf,
+                        iou=iou,
+                        show=show,
+                        img_size=img_size,
+                        device=device,
+                        half=half,
+                        show_conf=show_conf,
+                        save_txt=save_txt,
+                        show_labels=show_labels,
+                        save=save,
+                        save_mot=save_mot,
+                        save_id_crops=save_id_crops,
+                        verbose=verbose,
+                        exist_ok=exist_ok,
+                        save_dir=save_dir,
+                        name=name,
+                        classes=classes,
+                        per_class=per_class,
+                        vid_stride=vid_stride,
+                        line_width=line_width)
+
+    yolo = YOLO(weights)
+
+    results = yolo.track(
+        source=source,
+        stream=stream,
+        persist=False,
+
+        conf=conf,
+        iou=iou,
+        show=show,
+        device=device,
+        show_conf=show_conf,
+        save_txt=save_txt,
+        show_labels=show_labels,
+        save=save,
+        verbose=verbose,
+        exist_ok=exist_ok,
+        project=save_dir,
+        name=name,
+        classes=classes,
+        imgsz=img_size,
+        vid_stride=vid_stride,
+        line_width=line_width
+    )
+
+    yolo.add_callback('on_predict_start', partial(on_predict_start, persist=True))
+
+    if 'yolov8' not in str(args.yolo_model):
+        # replace yolov8 model
+        m = get_yolo_inferer(args.yolo_model)
+        model = m(
+            model=args.yolo_model,
+            device=yolo.predictor.device,
+            args=yolo.predictor.args
+        )
+        yolo.predictor.model = model
+
+    yolo.predictor.custom_args = args
+
+    '''Color Masks'''
+    # green_lower = np.array([50, 100, 100])
+    # green_upper = np.array([70, 255, 255])
+
+    # white_lower = np.array([0, 0, 200])
+    # white_upper = np.array([180, 50, 255])
+
+    green_lower = np.array([45, 20, 100])
+    green_upper = np.array([70, 255, 255])
+
+    white_lower = np.array([0, 0, 160])
+    white_upper = np.array([180, 50, 255])
+
+    for frame_idx, r in enumerate(results):
+        ''' Convert image to HSV'''
+        hsv_img = cv2.cvtColor(r.orig_img, cv2.COLOR_BGR2HSV)
+        green_mask = np.zeros_like(hsv_img[:, :, 0])
+        white_mask = np.zeros_like(hsv_img[:, :, 0])
+
+        if r.boxes.data.shape[1] == 7:
+            if yolo.predictor.source_type.webcam or source.endswith(VID_FORMATS):
+                p = yolo.predictor.save_dir / 'mot' / (source + '.txt')
+                yolo.predictor.mot_txt_path = p
+            elif 'MOT16' or 'MOT17' or 'MOT20' in source:
+                p = yolo.predictor.save_dir / 'mot' / (Path(source).parent.name + '.txt')
+                yolo.predictor.mot_txt_path = p
+
+            if save_mot:
+                write_mot_results(yolo.predictor.mot_txt_path, r, frame_idx)
+
+            if save_id_crops:
+                for d in r.boxes:
+                    # print('args.save_id_crops', d.data)
+                    save_one_box(
+                        d.xyxy,
+                        r.orig_img.copy(),
+                        file=(
+                            yolo.predictor.save_dir / 'crops' /
+                            str(int(d.cls.cpu().numpy().item())) /
+                            str(int(d.id.cpu().numpy().item())) / f'{frame_idx}.jpg'
+                        ),
+                        BGR=True
+                    )
+            for det in r.boxes:
+                x, y, w, h = det.xywh.cpu().numpy()[0]
+
+                player_roi = hsv_img[int(y):int(y+h), int(x):int(x+w), :]
+                mean_color = np.mean(player_roi, axis=(0, 1))
+
+                print(mean_color)
+
+                if (mean_color >= white_lower).all() and (mean_color <= white_upper).all():
+                    white_mask[int(y):int(y+h), int(x):int(x+w)] = 1
+                    print(str(det.id.cpu().numpy().item()) + " is in team white")
+                elif(mean_color >= green_lower).all() and (mean_color <= green_upper).all():
+                    green_mask[int(y):int(y+h), int(x):int(x+w)] = 1
+                    print(str(det.id.cpu().numpy().item()) + " is in team green")
+
+    if save_mot:
+        print(f'MOT results saved to {yolo.predictor.mot_txt_path}')
 
 
 def detect_pose(weights: str = 'yolov7.pt',
@@ -112,7 +312,6 @@ def detect_pose(weights: str = 'yolov7.pt',
     save_dir.mkdir(parents=True, exist_ok=True)  # create directory
     save_txt.mkdir(parents=True, exist_ok=True)  # create directory
     save_label.mkdir(parents=True, exist_ok=True)  # create directory
-    # save_logs.mkdir(parents=True, exist_ok=True)  # create directory
 
     '''Initialize'''
     set_logging()
@@ -199,15 +398,12 @@ def detect_pose(weights: str = 'yolov7.pt',
                 label_per_frame = str(save_label_video / (str(frame) + '.txt'))
                 save_path = str(save_dir / (filename.split('.')[0] + "_pose_out" + ".mp4"))  # img.jpg
                 txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
-                #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
+                
                 cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
 
                 gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
                 dets_to_sort = np.empty((0, 6))
                 if len(det):
-                    # '''Remove empty entry'''
-                    # pose_logs['pose_detection'][frame].remove(pose_logs['pose_detection'][frame][0])
-
                     '''Rescale boxes from img_size to im0 size'''
                     det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False).round()
                     # Rescale keypoints to original image size
@@ -405,18 +601,9 @@ def detect_basketball(weights: str = 'yolov7.pt',
     """
     time.sleep(5)
     print("weigths: ", weights)
-    # print(source)
     ##################################################################################################################################################
     # Parameters
-    ##################################################################################################################################################
-    '''Variables for counting the shots made'''
-    frames_shot_made: list = []
-    NUMBER_OF_FRAMES_AFTER_SHOT_MADE = 10
-    shotmade = 0
-    history = []
-    for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
-        history.append(False)
-    
+    ##################################################################################################################################################    
     save_img = not dont_save and not source.endswith('.txt')  # save inference images
 
     weights_name = weights.split('/')[1] 
@@ -425,12 +612,10 @@ def detect_basketball(weights: str = 'yolov7.pt',
     save_dir = paths.video_inferred_path / weights_name
     save_txt = paths.bbox_coordinates_path / weights_name
     save_label = paths.labels_path / weights_name
-    save_logs = paths.logs_path / weights_name
 
     save_dir.mkdir(parents=True, exist_ok=True)  # create directory
     save_txt.mkdir(parents=True, exist_ok=True)  # create directory
     save_label.mkdir(parents=True, exist_ok=True)  # create directory
-    # save_logs.mkdir(parents=True, exist_ok=True)  # create directory
 
     '''Initialize'''
     set_logging()
@@ -507,7 +692,7 @@ def detect_basketball(weights: str = 'yolov7.pt',
                 label_per_frame = str(save_label_video / (str(frame) + '.txt'))
                 save_path = str(save_dir / (filename.split('.')[0] + "_nethoopbasket_out" + ".mp4"))  # img.jpg
                 txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
-                #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
+                
                 cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
 
                 gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
@@ -542,15 +727,6 @@ def detect_basketball(weights: str = 'yolov7.pt',
                         #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
                         with open(label_per_frame, 'a') as f:
                             f.write((' '.join(label)) + '\n')
-
-                        cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
-                        if names[int(cls)] == "netbasket":
-                            if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
-                                history.append(False)
-                            else:
-                                shotmade += 1
-                                frames_shot_made.append(frame)
-                                history.append(True)
                             
                         if save_img or view_img:  # Add bbox to image
                             label = names[int(cls)]
@@ -600,7 +776,6 @@ def detect_basketball(weights: str = 'yolov7.pt',
 
     print(f'Done. ({time.time() - t0:.3f}s)')
     
-    print(f'Total Made Shots: {shotmade}')
     return basketball_logs
 
 
@@ -629,7 +804,6 @@ def detect_actions(weights: str = 'yolov7.pt',
     """
     time.sleep(5)
     print("weigths: ", weights)
-    # print(source)
     ##################################################################################################################################################
     # Parameters
     ##################################################################################################################################################
@@ -642,12 +816,10 @@ def detect_actions(weights: str = 'yolov7.pt',
     save_dir = paths.video_inferred_path / weights_name
     save_txt = paths.bbox_coordinates_path / weights_name
     save_label = paths.labels_path / weights_name
-    save_logs = paths.logs_path / weights_name
 
     save_dir.mkdir(parents=True, exist_ok=True)  # create directory
     save_txt.mkdir(parents=True, exist_ok=True)  # create directory
     save_label.mkdir(parents=True, exist_ok=True)  # create directory
-    # save_logs.mkdir(parents=True, exist_ok=True)  # create directory
 
     '''Initialize'''
     set_logging()
@@ -825,31 +997,6 @@ def writeToLog(logs_path, logs):
         with open(logs_path,'w') as yamlfile:
             yaml.safe_dump(logs, yamlfile)
 
-
-def set_max_split_size_mb(model, max_split_size_mb):
-    """
-    Set the max_split_size_mb parameter in PyTorch to avoid fragmentation.
-
-    Args:
-        model (torch.nn.Module): The PyTorch model.
-        max_split_size_mb (int): The desired value for max_split_size_mb in megabytes.
-    """
-    for param in model.parameters():
-        param.requires_grad = False  # Disable gradient calculation to prevent unnecessary memory allocations
-
-    # Dummy forward pass to initialize the memory allocator
-    dummy_input = torch.randn(1, 1)
-    model(dummy_input)
-
-    # Get the current memory allocator state
-    allocator = torch.cuda.memory._get_memory_allocator()
-
-    # Update max_split_size_mb in the memory allocator
-    allocator.set_max_split_size(max_split_size_mb * 1024 * 1024)
-
-    for param in model.parameters():
-        param.requires_grad = True 
-
        
 def detect_all(game_id: str = ''):
     videoPath, dataLogFilePath = get_game_data(game_id=game_id)
@@ -890,7 +1037,6 @@ def detect_all(game_id: str = ''):
 
 if __name__ == '__main__':
     # extract_key_frames(dataset_folder='HardwareDatasetOne', video_max_len = 500, video_res = 128, device = "cpu")
-    
-    detect_all(game_id='04183')
+    detect_all(game_id='IMG_2892')
 
     
