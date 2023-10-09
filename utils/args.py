@@ -85,6 +85,7 @@ def parse_segmentation(weights: str = 'yolov8.pt',
     return opt
 
 
+
 def parse_detection(weights: str = 'yolov7.pt',
                     cfg: str = '',
                     data: str = 'data/coco.yaml',

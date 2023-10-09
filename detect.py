@@ -21,6 +21,7 @@ import dev_utils.handle_db.pose_db_handler as pose_db
 
 from utils.args import *
 from utils.frame_extraction import extract_frames
+from utils.dominant_color import *
 
 from ultralytics import YOLO
 
@@ -40,6 +41,8 @@ from ultralytics.utils.plotting import save_one_box
 from utils.general import write_mot_results
 
 from yolo_tracking.boxmot.appearance import reid_export
+
+from PIL import Image as im 
 
 
 def draw_boxes_tracked(img, bbox, identities=None, categories=None, confidences=None, names=None, colors=None):
@@ -213,18 +216,18 @@ def instance_segmentation(weights: str = 'yolov8.pt',
     # white_lower = np.array([0, 0, 200])
     # white_upper = np.array([180, 50, 255])
 
-    green_lower = np.array([45, 20, 100])
-    green_upper = np.array([70, 255, 255])
+    red_lower = np.array([160,20,70])
+    red_upper = np.array([190, 255, 255])
 
-    white_lower = np.array([0, 0, 160])
-    white_upper = np.array([180, 50, 255])
+    blue_lower = np.array([101,50,38])
+    blue_upper = np.array([110, 255, 255])
+
+    '''Dummy Equation of Arc'''
+    arcUp = [-0.0105011, 0.0977268, -0.308306, 0.315377, -0.229249, 2.11325]
+    arcDown = [0.000527976, 0.00386626, 0.0291599, 0.121282, -2.22398]
 
     for frame_idx, r in enumerate(results):
         ''' Convert image to HSV'''
-        hsv_img = cv2.cvtColor(r.orig_img, cv2.COLOR_BGR2HSV)
-        green_mask = np.zeros_like(hsv_img[:, :, 0])
-        white_mask = np.zeros_like(hsv_img[:, :, 0])
-
         if r.boxes.data.shape[1] == 7:
             if yolo.predictor.source_type.webcam or source.endswith(VID_FORMATS):
                 p = yolo.predictor.save_dir / 'mot' / (source + '.txt')
@@ -252,17 +255,43 @@ def instance_segmentation(weights: str = 'yolov8.pt',
             for det in r.boxes:
                 x, y, w, h = det.xywh.cpu().numpy()[0]
 
-                player_roi = hsv_img[int(y):int(y+h), int(x):int(x+w), :]
-                mean_color = np.mean(player_roi, axis=(0, 1))
+                x_center_below = x + w/2
+                y_center_below = y + h
 
-                print(mean_color)
+                player_roi = r.orig_img[int(y):int(y+h), int(x):int(x+w), :]
 
-                if (mean_color >= white_lower).all() and (mean_color <= white_upper).all():
-                    white_mask[int(y):int(y+h), int(x):int(x+w)] = 1
-                    print(str(det.id.cpu().numpy().item()) + " is in team white")
-                elif(mean_color >= green_lower).all() and (mean_color <= green_upper).all():
-                    green_mask[int(y):int(y+h), int(x):int(x+w)] = 1
-                    print(str(det.id.cpu().numpy().item()) + " is in team green")
+                img = im.fromarray(player_roi)
+                dominantcolor = DominantColor(img)
+                # print(dominantcolor.dominant_color)
+                print(dominantcolor.rgb)
+
+                player_id = None
+                if(dominantcolor.dominant_color=='r'):
+                    player_id = 1
+                    print('player 1')
+                elif(dominantcolor.dominant_color=='b'):
+                    player_id = 2
+                    print('player 2')
+
+                yUp = polyUp(x_center_below)
+                yDown = polyDown(x_center_below)
+
+                polyUp = np.poly1d(arcUp)
+                polyDown = np.poly1d(arcDown)
+
+                position=""
+                if yUp > y_center_below and yDown < y_center_below:
+                    position = "2_points"
+                else:
+                    position = "3_points"
+
+                pose_db.insert_into_pose_table(
+                    frame_num=frame_idx,
+                    player_num= player_id,
+                    bbox_coords= d.xyxy.tolist(),
+                    feet_coords= [x_center_below, y_center_below],
+                    position=position
+                )
 
     if save_mot:
         print(f'MOT results saved to {yolo.predictor.mot_txt_path}')
@@ -1006,37 +1035,46 @@ def detect_all(game_id: str = ''):
         action_weights = 'weights/actions_2.pt'
         basket_weights = 'weights/net_hoop_basket_combined_april.pt'
         pose_weights = 'weights/yolov7-w6-pose.pt'
+        instance_weights = 'weights/yolov8_person_IS_8_10_2023.pt'
+        reid_model = 'weights/osnet_x0_25_imagenet.torchscript'
 
         '''
             Detect
         '''
-        # Actions
-        action_db.create_database(game_id)
-        action_db.create_action_table()
-        actions_logs = detect_actions(weights=action_weights, source=videoPath, dont_save=False)
-        strip_optimizer(action_weights)
-        action_db.close_db()
-        writeToLog(dataLogFilePath, actions_logs)
+        # # Actions
+        # action_db.create_database(game_id)
+        # action_db.create_action_table()
+        # actions_logs = detect_actions(weights=action_weights, source=videoPath, dont_save=False)
+        # strip_optimizer(action_weights)
+        # action_db.close_db()
+        # writeToLog(dataLogFilePath, actions_logs)
 
-        # Basketball
-        basket_db.create_database(game_id)
-        basket_db.create_basket_table()
-        basketball_logs = detect_basketball(weights=basket_weights, source=videoPath, dont_save=False)
-        strip_optimizer(basket_weights)
-        basket_db.close_db()
-        writeToLog(dataLogFilePath, basketball_logs)
+        # # Basketball
+        # basket_db.create_database(game_id)
+        # basket_db.create_basket_table()
+        # basketball_logs = detect_basketball(weights=basket_weights, source=videoPath, dont_save=False)
+        # strip_optimizer(basket_weights)
+        # basket_db.close_db()
+        # writeToLog(dataLogFilePath, basketball_logs)
 
-        # Pose
+        # # Pose
+        # pose_db.create_database(game_id)
+        # pose_db.create_pose_table()
+        # pose_logs = detect_pose(weights=pose_weights, source=videoPath, dont_save=False)
+        # strip_optimizer(pose_weights)
+        # pose_db.close_db()
+        # writeToLog(dataLogFilePath, pose_logs)
+
+        # Instance Segmentation
         pose_db.create_database(game_id)
         pose_db.create_pose_table()
-        pose_logs = detect_pose(weights=pose_weights, source=videoPath, dont_save=False)
-        strip_optimizer(pose_weights)
+        instance_segmentation(weights=instance_weights, reid_model=reid_model, source=videoPath, tracking_method='hybridsort', name='dominant_color_test', exist_ok=True)
         pose_db.close_db()
-        writeToLog(dataLogFilePath, pose_logs)
+
 
 
 if __name__ == '__main__':
     # extract_key_frames(dataset_folder='HardwareDatasetOne', video_max_len = 500, video_res = 128, device = "cpu")
-    detect_all(game_id='IMG_2892')
+    detect_all(game_id='IMG_3050')
 
     
