@@ -35,26 +35,26 @@ class DetectionService:
         return
 
     def run_inference(self, game_id: str) -> tuple[dict, str, str, str, str, int]:
-        #download_video(game_id)
-        #self.infer_detection(game_id)
-        #process_video(game_id)
-        #frames_point_scored, shotsmade = getNetbasketCoordinatesFrames(game_id)
+        download_video(game_id)
+        self.infer_detection(game_id)
+        process_video(game_id)
+        frames_point_scored, shotsmade = getNetbasketCoordinatesFrames(game_id)
         stats = getAPIStats(game_id, [1], [2])
         video_inferred_path = str(paths.post_process_path / f'{game_id}.mp4') # Post Process
         filename = os.path.basename(video_inferred_path)
-        # if shotsmade > 0:
-        #     videos_paths = video_splitter(game_id=game_id, path_to_video=video_inferred_path,
-        #                                   frames_shot_made=frames_point_scored)
-        #     concatenated, video = video_concat(game_id, videos_paths, filename)
-        #     print(video.duration)
-        #     concatenated_with_music = give_song(game_id=game_id, video_clip=video, duration=int(video.duration),
-        #                                         filename=filename)
-        # print(frames_point_scored)
+        if shotsmade > 0:
+            videos_paths = video_splitter(game_id=game_id, path_to_video=video_inferred_path,
+                                          frames_shot_made=frames_point_scored)
+            concatenated, video = video_concat(game_id, videos_paths, filename)
+            print(video.duration)
+            concatenated_with_music = give_song(game_id=game_id, video_clip=video, duration=int(video.duration),
+                                                filename=filename)
+        print(frames_point_scored)
         upload_highlights_to_s3(game_id)
-        default_stats = {'game_id': 'f1tch41n',
-                         'team_1': {'players': [{'player_1': {'scored': 3, 'missed': 0}}], 'points': 3,
-                                    'possession': '100.0 %'},
-                         'team_2': {'players': [], 'points': 0, 'possession': '0.0 %'}}
+        # default_stats = {'game_id': 'f1tch41n',
+        #                  'team_1': {'players': [{'player_1': {'scored': 3, 'missed': 0}}], 'points': 3,
+        #                             'possession': '100.0 %'},
+        #                  'team_2': {'players': [], 'points': 0, 'possession': '0.0 %'}}
         #delete_downloaded_video(game_id)
         requests.patch(
             url=f'http://ec2-16-170-232-235.eu-north-1.compute.amazonaws.com:3000/ai/video_processed/{game_id}',
@@ -63,4 +63,4 @@ class DetectionService:
         )
         lock_service.LockService().deleteLockFile(game_id)
         print(stats)
-        #return stats, video_inferred_path, videos_paths, concatenated, concatenated_with_music, shotsmade
+        return stats, video_inferred_path, videos_paths, concatenated, concatenated_with_music, shotsmade
