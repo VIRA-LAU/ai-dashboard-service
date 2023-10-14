@@ -19,11 +19,11 @@ def getAPIStats(game_id: str, team1: list, team2: list) -> dict:
     connect_to_db(game_id)
     team1_player_points, team2_player_points = getShotsPerTeam(team1, team2)
     return {
-        'team1' : {
+        'team_1' : {
             'players' : team1_player_points,
             'points' : getTotalPerTeam(team1_player_points)
         },
-        'team2' : {
+        'team_2' : {
             'players' : team2_player_points,
             'points' : getTotalPerTeam(team2_player_points)
         }
@@ -153,4 +153,4 @@ def getPlayersAndBasket():
 
 if __name__ == '__main__':
     #print(getAPIStats('04181', [1], [2]))
-    print(getNetbasketCoordinatesFrames('04183'))
+    print(getAPIStats('45', [1], [2]))

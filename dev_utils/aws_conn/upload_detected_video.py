@@ -19,4 +19,4 @@ def upload_highlights_to_s3(game_id: str):
 
 
 if __name__ == '__main__':
-    upload_highlights_to_s3('f1tch41n')
+    upload_highlights_to_s3('45')

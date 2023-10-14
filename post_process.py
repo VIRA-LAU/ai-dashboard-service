@@ -4,7 +4,7 @@ import yaml
 import numpy as np
 
 import cv2
-
+import os
 from getstats import *
 from shared.helper.json_helpers import parse_json
 from dev_utils.paths.game import get_game_data
@@ -20,7 +20,7 @@ def process_video(game_id: str):
     data = getPostProcessingData(game_id)
     video = cv2.VideoCapture(video_path)
     framerate = math.ceil(video.get(cv2.CAP_PROP_FPS))
-
+    os.makedirs(os.path.join(paths.post_process_path), exist_ok=True)
     output = cv2.VideoWriter(
         str(paths.post_process_path / f'{game_id}.mp4'), cv2.VideoWriter_fourcc(*'mp4v'), framerate, (1920, 1080))
     
