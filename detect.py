@@ -21,8 +21,12 @@ import dev_utils.handle_db.pose_db_handler as pose_db
 
 from utils.args import *
 from utils.frame_extraction import extract_frames
+from utils.dominant_color import DominantColor
+from utils.segmentation import overlay
+from utils.hist_matching import matching
 
 from ultralytics import YOLO
+from ultralytics.utils.ops import scale_image
 
 from yolo_tracking.boxmot import TRACKERS
 from yolo_tracking.boxmot.tracker_zoo import create_tracker
@@ -40,6 +44,24 @@ from ultralytics.utils.plotting import save_one_box
 from utils.general import write_mot_results
 
 from yolo_tracking.boxmot.appearance import reid_export
+
+from PIL import Image as im 
+
+import matplotlib
+import matplotlib.pyplot as plt
+
+matplotlib.use('TkAgg')
+
+from sklearn.cluster import KMeans, MiniBatchKMeans
+from collections import Counter
+import pprint
+from matplotlib import pyplot as plt
+
+from colormath.color_objects import sRGBColor, LabColor
+from colormath.color_conversions import convert_color
+from colormath.color_diff import delta_e_cie2000
+
+from utils.faiss_kmeans import FaissKMeans
 
 
 def draw_boxes_tracked(img, bbox, identities=None, categories=None, confidences=None, names=None, colors=None):
@@ -116,6 +138,112 @@ def on_predict_start(predictor, persist=False):
     predictor.trackers = trackers
 
 
+def removeBlack(estimator_labels, estimator_cluster):
+    # Check for black
+    hasBlack = False
+
+    # Get the total number of occurance for each color
+    occurance_counter = Counter(estimator_labels)
+    
+    # Quick lambda function to compare to lists
+    compare = lambda x, y: Counter(x) == Counter(y)
+    
+    # Loop through the most common occuring color
+    for x in occurance_counter.most_common(len(estimator_cluster)):
+        # Quick List comprehension to convert each of RBG Numbers to int
+        color = [int(i) for i in estimator_cluster[x[0]].tolist() ]
+        
+        # Check if the color is [0,0,0] that if it is black 
+        if compare(color , [0,0,0]) == True:
+            # delete the occurance
+            del occurance_counter[x[0]]
+            # remove the cluster 
+            hasBlack = True
+            estimator_cluster = np.delete(estimator_cluster,x[0],0)
+            break
+
+    return (occurance_counter,estimator_cluster,hasBlack)
+
+
+def getColorInformation(estimator_labels, estimator_cluster,hasThresholding=False):
+    # Variable to keep count of the occurance of each color predicted
+    occurance_counter = None
+    # Output list variable to return
+    colorInformation = []
+    #Check for Black
+    hasBlack = False
+    # If a mask has be applied, remove th black
+    if hasThresholding == True:
+        (occurance,cluster,black) = removeBlack(estimator_labels,estimator_cluster)
+        occurance_counter =  occurance
+        estimator_cluster = cluster
+        hasBlack = black        
+    else:
+        occurance_counter = Counter(estimator_labels)
+    
+    # Get the total sum of all the predicted occurances
+    totalOccurance = sum(occurance_counter.values()) 
+
+    # Loop through all the predicted colors
+    for x in occurance_counter.most_common(len(estimator_cluster)):
+        index = (int(x[0]))
+        # Quick fix for index out of bound when there is no threshold
+        index =  (index-1) if ((hasThresholding & hasBlack)& (int(index) !=0)) else index
+        # Get the color number into a list
+        color = estimator_cluster[index].tolist()
+        # Get the percentage of each color
+        color_percentage= (x[1]/totalOccurance)
+        #make the dictionay of the information
+        colorInfo = {"cluster_index":index , "color": color , "color_percentage" : color_percentage }
+        # Add the dictionary to the list
+        colorInformation.append(colorInfo)
+        
+    return colorInformation 
+
+
+def extractDominantColor(image,number_of_colors=5,hasThresholding=False):
+    # Quick Fix Increase cluster counter to neglect the black(Read Article) 
+    if hasThresholding == True:
+        number_of_colors +=1
+    
+    # Taking Copy of the image
+    img = image.copy()
+    # Convert Image into RGB Colours Space
+    img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
+    # Reshape Image
+    img = img.reshape((img.shape[0]*img.shape[1]) , 3)
+    #Initiate KMeans Object
+    # estimator = KMeans(n_clusters=number_of_colors, random_state=0)
+    estimator = FaissKMeans(n_clusters=number_of_colors)
+    # Fit the image
+    estimator.fit(img)
+    # Get Colour Information
+    colorInformation = getColorInformation(estimator.labels_,estimator.cluster_centers_,hasThresholding)
+
+    return colorInformation
+
+
+def plotColorBar(colorInformation):
+    #Create a 500x100 black image
+    color_bar = np.zeros((100,500,3), dtype="uint8")
+    top_x = 0
+
+    for x in colorInformation:    
+        bottom_x = top_x + (x["color_percentage"] * color_bar.shape[1])
+        color = tuple(map(int,(x['color'])))
+        cv2.rectangle(color_bar , (int(top_x),0) , (int(bottom_x),color_bar.shape[0]) ,color , -1)
+        top_x = bottom_x
+
+    return color_bar
+
+
+def prety_print_data(color_info):
+    for x in color_info:
+        print(pprint.pformat(x))
+        print()
+     
+
+
 def instance_segmentation(weights: str = 'yolov8.pt',
                         reid_model: Path = '',
                         tracking_method: str = 'deepocsort',
@@ -140,132 +268,217 @@ def instance_segmentation(weights: str = 'yolov8.pt',
                         classes: int = 0,
                         per_class: bool = False,
                         vid_stride: int = 1,
-                        line_width: int = 3):
-    
-    args = parse_segmentation(weights=weights,
-                        reid_model=reid_model,
-                        tracking_method=tracking_method,
-                        source=source,
-                        conf=conf,
-                        iou=iou,
-                        show=show,
-                        img_size=img_size,
-                        device=device,
-                        half=half,
-                        show_conf=show_conf,
-                        save_txt=save_txt,
-                        show_labels=show_labels,
-                        save=save,
-                        save_mot=save_mot,
-                        save_id_crops=save_id_crops,
-                        verbose=verbose,
-                        exist_ok=exist_ok,
-                        save_dir=save_dir,
-                        name=name,
-                        classes=classes,
-                        per_class=per_class,
-                        vid_stride=vid_stride,
-                        line_width=line_width)
+                        line_width: int = 3,
+                        view_img: bool = False):
 
-    yolo = YOLO(weights)
+    weights_name = weights.split('/')[1] 
 
-    results = yolo.track(
-        source=source,
-        stream=stream,
-        persist=False,
+    '''Directories'''
+    save_dir = paths.video_inferred_path / weights_name
+    save_txt = paths.bbox_coordinates_path / weights_name
+    save_label = paths.labels_path / weights_name
 
-        conf=conf,
-        iou=iou,
-        show=show,
-        device=device,
-        show_conf=show_conf,
-        save_txt=save_txt,
-        show_labels=show_labels,
-        save=save,
-        verbose=verbose,
-        exist_ok=exist_ok,
-        project=save_dir,
-        name=name,
-        classes=classes,
-        imgsz=img_size,
-        vid_stride=vid_stride,
-        line_width=line_width
-    )
+    save_dir.mkdir(parents=True, exist_ok=True)  # create directory
+    save_txt.mkdir(parents=True, exist_ok=True)  # create directory
+    save_label.mkdir(parents=True, exist_ok=True)  # create directory
 
-    yolo.add_callback('on_predict_start', partial(on_predict_start, persist=True))
+    '''Load model'''
+    model = YOLO(weights)
+    # stride = int(model.stride.max())  # model stride
+    # imgsz = check_img_size(img_size, s=stride)  # check img_size
+    # model = TracedModel(model, device, img_size)
+    # if half:
+    #     model.half()  # to FP16
 
-    if 'yolov8' not in str(args.yolo_model):
-        # replace yolov8 model
-        m = get_yolo_inferer(args.yolo_model)
-        model = m(
-            model=args.yolo_model,
-            device=yolo.predictor.device,
-            args=yolo.predictor.args
-        )
-        yolo.predictor.model = model
+    '''Logging'''
+    seg_logs={
+        'segmentation': {}
+    }
 
-    yolo.predictor.custom_args = args
+    '''Set Dataloader'''
+    # cap = cv2.VideoCapture(source)
+    vid_path, vid_writer = None, None
+    dataset = LoadImages(source, img_size=img_size)
 
-    '''Color Masks'''
-    # green_lower = np.array([50, 100, 100])
-    # green_upper = np.array([70, 255, 255])
+    '''Get names and colors'''
+    names = model.module.names if hasattr(model, 'module') else model.names
+    colors = [[random.randint(0, 255) for _ in range(3)] for _ in names]
 
-    # white_lower = np.array([0, 0, 200])
-    # white_upper = np.array([180, 50, 255])
+    '''Dummy Equation of Arc'''
+    arcUp = [-0.0105011, 0.0977268, -0.308306, 0.315377, -0.229249, 2.11325]
+    arcDown = [0.000527976, 0.00386626, 0.0291599, 0.121282, -2.22398]
 
-    green_lower = np.array([45, 20, 100])
-    green_upper = np.array([70, 255, 255])
+    polyUp = np.poly1d(arcUp)
+    polyDown = np.poly1d(arcDown)
 
-    white_lower = np.array([0, 0, 160])
-    white_upper = np.array([180, 50, 255])
+    '''Color Reference'''
+    reference_red_rgb = sRGBColor(1.0, 0.0, 0.0)
+    reference_blue_rgb = sRGBColor(0.0, 0.0, 1.0)
+    reference_red_lab = convert_color(reference_red_rgb, LabColor)
+    reference_blue_lab = convert_color(reference_blue_rgb, LabColor)
 
-    for frame_idx, r in enumerate(results):
-        ''' Convert image to HSV'''
-        hsv_img = cv2.cvtColor(r.orig_img, cv2.COLOR_BGR2HSV)
-        green_mask = np.zeros_like(hsv_img[:, :, 0])
-        white_mask = np.zeros_like(hsv_img[:, :, 0])
+    for path, img, im0s, image, vid_cap in dataset:
+        img = torch.from_numpy(img).to(device)
+        img = img.half() if half else img.float()  # uint8 to fp16/32
+        img /= 255.0  # 0 - 255 to 0.0 - 1.0
+        if img.ndimension() == 3:
+            img = img.unsqueeze(0)
 
-        if r.boxes.data.shape[1] == 7:
-            if yolo.predictor.source_type.webcam or source.endswith(VID_FORMATS):
-                p = yolo.predictor.save_dir / 'mot' / (source + '.txt')
-                yolo.predictor.mot_txt_path = p
-            elif 'MOT16' or 'MOT17' or 'MOT20' in source:
-                p = yolo.predictor.save_dir / 'mot' / (Path(source).parent.name + '.txt')
-                yolo.predictor.mot_txt_path = p
+        '''Inference'''
+        results = model.predict(img, stream=True)
 
-            if save_mot:
-                write_mot_results(yolo.predictor.mot_txt_path, r, frame_idx)
+        '''Extract frame attributes'''
+        p, s, im0, frame = path, '', im0s, getattr(dataset, 'frame', 0)
 
-            if save_id_crops:
-                for d in r.boxes:
-                    # print('args.save_id_crops', d.data)
-                    save_one_box(
-                        d.xyxy,
-                        r.orig_img.copy(),
-                        file=(
-                            yolo.predictor.save_dir / 'crops' /
-                            str(int(d.cls.cpu().numpy().item())) /
-                            str(int(d.id.cpu().numpy().item())) / f'{frame_idx}.jpg'
-                        ),
-                        BGR=True
+        h = int(im0.shape[0])
+        w = int(im0.shape[1])
+
+        '''Add empty entry to logs'''
+        seg_logs['segmentation'][frame] = {}
+
+        '''Process detections'''
+        for i, det in enumerate(results):  # detections per image
+            p = Path(p)  # to Path
+            filename = (p.name.replace(" ", "_"))
+            save_label_video = Path(save_label / (filename.split('.')[0]))
+            save_label_video.mkdir(parents=True, exist_ok=True)  # make dir
+            label_per_frame = str(save_label_video / (str(frame) + '.txt'))
+            save_path = str(save_dir / (filename.split('.')[0] + "_actions_out" + ".mp4"))  # img.jpg
+            txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
+
+            boxes = det.boxes  # Boxes object for bbox outputs
+            masks = det.masks  # Masks object for segment masks outputs
+            probs = det.probs  # Class probabilities for classification outputs
+
+            gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
+
+            cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
+
+            if masks is not None:
+                masks = masks.data.cpu()
+                for seg, box in zip(masks.data.cpu().numpy(), boxes):
+
+                    r_xyxy = scale_coords(img.shape[2:], box.xyxy.clone(), im0.shape, kpt_label=False).round()
+                    # r_xywh = scale_coords(img.shape[2:], box.xywh.clone(), im0.shape, kpt_label=False).round()
+
+                    seg = cv2.resize(seg, (w, h))
+                    im0, colored_mask = overlay(im0, seg, colors[int(box.cls)], 0.4)
+
+                    # Find the dominant color. Default is 1 , pass the parameter 'number_of_colors=N' where N is the specified number of colors 
+                    dominantColors = extractDominantColor(colored_mask,hasThresholding=True)
+
+                    # #Show in the dominant color information
+                    # print("Color Information")
+                    # prety_print_data(dominantColors)
+
+                    # #Show in the dominant color as bar
+                    # print("Color Bar")
+                    # colour_bar = plotColorBar(dominantColors)
+                    # plt.axis("off")
+                    # plt.imshow(colour_bar)
+                    # plt.show()
+
+                    red_color_diff = []
+                    blue_color_diff = []
+                    for dc in dominantColors:
+                        color = tuple(map(int,(dc['color'])))
+                        color = [round(float(i)/255.0, 2) for i in color]
+                        color_srgb = sRGBColor(color[0], color[1], color[2])
+                        color_lab = convert_color(color_srgb, LabColor)
+
+                        # Find the color difference
+                        red_color_diff.append(delta_e_cie2000(reference_red_lab, color_lab))
+                        blue_color_diff.append(delta_e_cie2000(reference_blue_lab, color_lab))
+
+                    delta_red = min(red_color_diff)
+                    delta_blue = min(blue_color_diff)
+
+                    player_id = None
+                    if delta_red < delta_blue:
+                        player_id = 1
+                    elif delta_blue < delta_red:
+                        player_id = 2
+
+                    # xywh = box.xywhn.cpu().numpy()[0] # normalized 
+                    xywh = (xyxy2xywh(torch.tensor(r_xyxy.cpu().numpy()[0]).view(1, 4)) / gn).view(-1).tolist()
+                    xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
+                    xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
+                    line = [str(frame), names[int(box.cls)], xywh, str(round(float(conf), 5))]
+                    with open(txt_path, 'a') as f:
+                        f.write(('\t'.join(line)) + '\n')
+                    label = [str(int(box.cls)), xywh_label]
+                    
+                    with open(label_per_frame, 'a') as f:
+                        f.write((' '.join(label)) + '\n')
+                        
+                    if save:  # Add bbox to image
+                        label = names[int(box.cls)]
+                    label = names[int(box.cls)]
+
+                    b_x, b_y, b_w, b_h = box.xywh.cpu().numpy()[0]
+
+                    x_center_below = b_x + b_w/2
+                    y_center_below = b_y + b_h
+
+                    yUp = polyUp(x_center_below)
+                    yDown = polyDown(x_center_below)
+
+                    position=""
+                    if yUp > y_center_below and yDown < y_center_below:
+                        position = "2_points"
+                    else:
+                        position = "3_points"
+
+                    pose_db.insert_into_pose_table(
+                        frame_num=frame,
+                        player_num= player_id,
+                        bbox_coords= box.xyxy.tolist(),
+                        feet_coords= [int(x_center_below), int(y_center_below)],
+                        position=position
                     )
-            for det in r.boxes:
-                x, y, w, h = det.xywh.cpu().numpy()[0]
 
-                player_roi = hsv_img[int(y):int(y+h), int(x):int(x+w), :]
-                mean_color = np.mean(player_roi, axis=(0, 1))
+                    if(player_id not in seg_logs['segmentation'][frame]):
+                        seg_logs['segmentation'][frame][player_id] = []
 
-                print(mean_color)
+                    # Add Tracked Person to Logs
+                    player_entry = {
+                        "player_id": str(player_id),
+                        "bbox_coords": box.xyxy.tolist(),
+                        "feet_coords": [int(x_center_below), int(y_center_below)],
+                        "position": position
+                    }
 
-                if (mean_color >= white_lower).all() and (mean_color <= white_upper).all():
-                    white_mask[int(y):int(y+h), int(x):int(x+w)] = 1
-                    print(str(det.id.cpu().numpy().item()) + " is in team white")
-                elif(mean_color >= green_lower).all() and (mean_color <= green_upper).all():
-                    green_mask[int(y):int(y+h), int(x):int(x+w)] = 1
-                    print(str(det.id.cpu().numpy().item()) + " is in team green")
+                    seg_logs['segmentation'][frame][player_id].append(player_entry)
 
-    if save_mot:
-        print(f'MOT results saved to {yolo.predictor.mot_txt_path}')
+                    label = "player: " + str(player_id)
+                    old_label = names[int(box.cls)]
+
+                    plot_one_box(r_xyxy.cpu().numpy()[0], im0, colors[int(box.cls)], f'{label} {float(box.conf):.3}')
+
+        '''Stream results'''
+        if view_img:
+            cv2.imshow(str('img'), im0)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        '''Save results (video with detections)'''
+        if save:
+            if vid_path != save_path:  # new video
+                vid_path = save_path
+                if isinstance(vid_writer, cv2.VideoWriter):
+                    vid_writer.release()  # release previous video writer
+                if vid_cap:  # video
+                    fps = vid_cap.get(cv2.CAP_PROP_FPS)
+                    vid_w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    vid_h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                else:  # stream
+                    fps, w, h = 30, im0.shape[1], im0.shape[0]
+                    save_path += '.mp4'
+                vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (vid_w, vid_h))
+            vid_writer.write(im0)
+        # vid_cap.release()
+
+    return seg_logs
 
 
 def detect_pose(weights: str = 'yolov7.pt',
@@ -908,6 +1121,9 @@ def detect_actions(weights: str = 'yolov7.pt',
                     if first_entry['action'] == None:
                         actions_logs['action_detection'][frame].remove(first_entry)
 
+                    # print(det[:, :4])
+                    # print(type(det[:, :4]))
+
                     '''Rescale boxes from img_size to im0 size'''
                     det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False).round()
 
@@ -1002,41 +1218,51 @@ def detect_all(game_id: str = ''):
     videoPath, dataLogFilePath = get_game_data(game_id=game_id)
     print(torch.cuda.is_available())
     torch.cuda.empty_cache()
-    with torch.no_grad():
-        action_weights = 'weights/actions_2.pt'
-        basket_weights = 'weights/net_hoop_basket_combined_april.pt'
-        pose_weights = 'weights/yolov7-w6-pose.pt'
+    # with torch.no_grad():
+    action_weights = 'weights/pre-trained/actions_2.pt'
+    basket_weights = 'weights/pre-trained/net_hoop_basket_combined_april.pt'
+    pose_weights = 'weights/pre-trained/yolov7-w6-pose.pt'
+    instance_weights = 'weights/yolov8_person_IS_8_10_2023.pt'
+    reid_model = 'weights/osnet_x0_25_imagenet.torchscript'
 
-        '''
-            Detect
-        '''
-        # Actions
-        action_db.create_database(game_id)
-        action_db.create_action_table()
-        actions_logs = detect_actions(weights=action_weights, source=videoPath, dont_save=False)
-        strip_optimizer(action_weights)
-        action_db.close_db()
-        writeToLog(dataLogFilePath, actions_logs)
+    '''
+        Detect
+    '''
+    # # Actions
+    # action_db.create_database(game_id)
+    # action_db.create_action_table()
+    # actions_logs = detect_actions(weights=action_weights, source=videoPath, dont_save=False)
+    # strip_optimizer(action_weights)
+    # action_db.close_db()
+    # writeToLog(dataLogFilePath, actions_logs)
 
-        # Basketball
-        basket_db.create_database(game_id)
-        basket_db.create_basket_table()
-        basketball_logs = detect_basketball(weights=basket_weights, source=videoPath, dont_save=False)
-        strip_optimizer(basket_weights)
-        basket_db.close_db()
-        writeToLog(dataLogFilePath, basketball_logs)
+    # # Basketball
+    # basket_db.create_database(game_id)
+    # basket_db.create_basket_table()
+    # basketball_logs = detect_basketball(weights=basket_weights, source=videoPath, dont_save=False)
+    # strip_optimizer(basket_weights)
+    # basket_db.close_db()
+    # writeToLog(dataLogFilePath, basketball_logs)
 
-        # Pose
-        pose_db.create_database(game_id)
-        pose_db.create_pose_table()
-        pose_logs = detect_pose(weights=pose_weights, source=videoPath, dont_save=False)
-        strip_optimizer(pose_weights)
-        pose_db.close_db()
-        writeToLog(dataLogFilePath, pose_logs)
+    # # Pose
+    # pose_db.create_database(game_id)
+    # pose_db.create_pose_table()
+    # pose_logs = detect_pose(weights=pose_weights, source=videoPath, dont_save=False)
+    # strip_optimizer(pose_weights)
+    # pose_db.close_db()
+    # writeToLog(dataLogFilePath, pose_logs)
+
+    # Instance Segmentation
+    pose_db.create_database(game_id)
+    pose_db.create_pose_table()
+    seg_logs = instance_segmentation(weights=instance_weights, reid_model=reid_model, source=videoPath, tracking_method='hybridsort', name='dominant_color_test', exist_ok=True)
+    pose_db.close_db()
+    writeToLog(dataLogFilePath, seg_logs)
+
 
 
 if __name__ == '__main__':
-    # extract_key_frames(dataset_folder='HardwareDatasetOne', video_max_len = 500, video_res = 128, device = "cpu")
-    detect_all(game_id='IMG_2892')
+    extract_key_frames(dataset_folder='PhoneDatasetSeven', video_max_len = 10000)
+    # detect_all(game_id='IMG_3050_Test')
 
     

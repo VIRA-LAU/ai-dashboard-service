@@ -145,10 +145,16 @@ def run_train_detection(weights: str = 'yolov7.pt',
         train_detection_evolve(hyp, opt, device)
 
 
-def run_auto_annotator():
+def run_auto_annotator_segmentation():
     auto_annotate_segmentation()
 
 
+def run_train_segmentation():
+    train_segmentation(weights='weights/yolov8n-seg.pt', data='datasets/training_datasets/instance_segmentation/PhoneDatasetThree/data.yaml')
+    return
+
+
 if __name__ == "__main__":
-    # run_train_detection()
-    run_auto_annotator()
+    run_train_detection(evolve=True, hyp='train/cfg/object_detection/hyperparametrs/hyp.yanl', adam=True)
+    # run_auto_annotator_segmentation()
+    # run_train_segmentation()

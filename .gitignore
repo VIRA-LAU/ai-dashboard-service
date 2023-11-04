@@ -23,4 +23,6 @@ utils/TubeDETR/models/checkpoints/*
 !utils/TubeDETR/models/checkpoints/.gitkeep
 
 weights/*
+runs/*
 
+yolov8n.pt
