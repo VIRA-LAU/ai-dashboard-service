@@ -1,0 +1,13 @@
+# train and val data as 1) directory: path/images/, 2) file: path/images.txt, or 3) list: [path1/images/, path2/images/]
+train: ./coco/train2017.txt
+val: ./coco/val2017.txt
+test: ./coco/test-dev2017.txt
+
+# number of classes
+nc: 3
+
+# class names:
+# netbasket: 0
+# netempty: 1
+# basketball: 2
+names: [ 'netbasket', 'netempty', 'basketball' ]

@@ -20,4 +20,5 @@ labels_path = root_dir / Path(parse_json(paths_file)["label_path"])
 
 logs_path = root_dir / Path(parse_json(paths_file)["logs_path"])
 locks_path = root_dir / Path(parse_json(paths_file)["locks_path"])
+post_process_path = root_dir / Path(parse_json(paths_file)["post_process_path"])
 hosted_videos_input_path = parse_json(paths_file)['hosted_videos_input_path']

@@ -1,39 +1,45 @@
-import os
-import pathlib
-import threading
-import time
-import shutil
 from pathlib import Path
 import yaml
+from functools import partial
 
-import numpy as np
-from numpy import random
-import pandas as pd
-
-import cv2
 import torch
-
-from models.experimental import attempt_load
-from persistence.repositories import paths
-from utils.TubeDETR import stvg
-from utils.datasets import LoadImages
-from utils.general import check_img_size, non_max_suppression, scale_coords, strip_optimizer, set_logging, xyxy2xywh, non_max_suppression_kpt
-from utils.plots import plot_one_box, output_to_keypoint, plot_kpts
-from utils.torch_utils import select_device, time_synchronized, TracedModel
-from utils.google_utils import gdrive_download
-
-from dev_utils.paths.game import get_game_data
+import yaml
 
 from bridge_wrapper import *
 from detection_helpers import *
+from dev_utils.paths.game import get_game_data
+from persistence.repositories import paths
 from tracking_helpers import *
+from utils.datasets import LoadImages
+from utils.general import strip_optimizer, set_logging, non_max_suppression_kpt
+from utils.google_utils import gdrive_download
+from utils.plots import output_to_keypoint, plot_kpts
+from utils.torch_utils import time_synchronized
+import dev_utils.handle_db.action_db_handler as action_db
+import dev_utils.handle_db.basket_db_handler as basket_db
+import dev_utils.handle_db.pose_db_handler as pose_db
 
-# from mmpose.apis import inference_topdown, init_model
-# from mmpose.utils import register_all_modules
+from utils.args import *
+from utils.frame_extraction import extract_frames
 
-# from mmpose.apis import MMPoseInferencer
+from ultralytics import YOLO
 
-# os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:1024"
+from yolo_tracking.boxmot import TRACKERS
+from yolo_tracking.boxmot.tracker_zoo import create_tracker
+from yolo_tracking.boxmot.utils import ROOT, WEIGHTS
+from yolo_tracking.boxmot.utils.checks import TestRequirements
+from yolo_tracking.detectors import get_yolo_inferer
+
+__tr = TestRequirements()
+__tr.check_packages(('ultralytics @ git+https://github.com/mikel-brostrom/ultralytics.git', ))  # install
+
+from ultralytics import YOLO
+from ultralytics.data.utils import VID_FORMATS
+from ultralytics.utils.plotting import save_one_box
+
+from utils.general import write_mot_results
+
+from yolo_tracking.boxmot.appearance import reid_export
 
 
 def draw_boxes_tracked(img, bbox, identities=None, categories=None, confidences=None, names=None, colors=None):
@@ -65,268 +71,201 @@ def draw_boxes_tracked(img, bbox, identities=None, categories=None, confidences=
     c2 = x1 + t_size[0], y1 - t_size[1] - 3
     cv2.rectangle(img, (x1, y1), c2, color, -1, cv2.LINE_AA)  # filled
     cv2.putText(img, label, (x1, y1 - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
+
     return img
 
 
-def extract_key_frames(dataset_folder: str = "", video_max_len: int = 200, video_res: int = 224, device: str = "cuda"):
-    '''
-        Temporal Analysis
-    '''
-    if len(os.listdir('utils/TubeDETR/models/checkpoints/res352/')) == 0:
-        ckpt = gdrive_download(id='1GqYjnad42-fri1lxSmT0vFWwYez6_iOv', file='utils/TubeDETR/models/checkpoints/res352/vidstg_k4.pth')
-
-    temporal_model='utils/TubeDETR/models/checkpoints/res352/vidstg_k4.pth' # model that performs temporal analysis
+def extract_key_frames(dataset_folder: str = "", video_max_len: int = 200, fps: int = 5):
     out_dir = paths.video_input_path # output video with less frames
     out_dir_frames = paths.temporal_frames  # output frames
 
     source = os.path.join(paths.temporal_videos_input_path, dataset_folder)
     for video in os.listdir(source):
         vid_path = os.path.join(source, video)
-        stvg.analyze(vid_path, video_max_len, video_res, temporal_model, device, out_dir, out_dir_frames)
-        
+        extract_frames(vid_path, fps, video_max_len, out_dir_frames)
 
-def new_pose(source: str = 'inference/images',
-             weights: str='',
-             img_size: int = 640,
-             view_img: bool = True,
-             dont_save: bool = False,
-             track: bool = True):
+
+def on_predict_start(predictor, persist=False):
+    """
+    Initialize trackers for object tracking during prediction.
+
+    Args:
+        predictor (object): The predictor object to initialize trackers for.
+        persist (bool, optional): Whether to persist the trackers if they already exist. Defaults to False.
+    """
+
+    assert predictor.custom_args.tracking_method in TRACKERS, \
+        f"'{predictor.custom_args.tracking_method}' is not supported. Supported ones are {TRACKERS}"
+
+    tracking_config = os.path.join('yolo_tracking/boxmot/configs',(predictor.custom_args.tracking_method + '.yaml'))
+    trackers = []
+    for i in range(predictor.dataset.bs):
+        tracker = create_tracker(
+            predictor.custom_args.tracking_method,
+            tracking_config,
+            predictor.custom_args.reid_model,
+            predictor.device,
+            predictor.custom_args.half,
+            predictor.custom_args.per_class
+        )
+        # motion only modeles do not have
+        if hasattr(tracker, 'model'):
+            tracker.model.warmup()
+        trackers.append(tracker)
+
+    predictor.trackers = trackers
+
+
+def instance_segmentation(weights: str = 'yolov8.pt',
+                        reid_model: Path = '',
+                        tracking_method: str = 'deepocsort',
+                        source: str='',
+                        conf: float=0.6,
+                        iou: float=0.45,
+                        show: bool=False,
+                        img_size: int=640,
+                        stream: bool=True,
+                        device= torch.device("cuda:0"),
+                        half: bool=True,
+                        show_conf: bool=False,
+                        save_txt: bool=False,
+                        show_labels: bool=True,
+                        save: bool=True,
+                        save_mot: bool=True,
+                        save_id_crops: bool=True,
+                        verbose: bool=True,
+                        exist_ok: bool=False,
+                        save_dir: str = 'datasets/videos_inferred',
+                        name: str = 'segmentation',
+                        classes: int = 0,
+                        per_class: bool = False,
+                        vid_stride: int = 1,
+                        line_width: int = 3):
     
-    register_all_modules()
+    args = parse_segmentation(weights=weights,
+                        reid_model=reid_model,
+                        tracking_method=tracking_method,
+                        source=source,
+                        conf=conf,
+                        iou=iou,
+                        show=show,
+                        img_size=img_size,
+                        device=device,
+                        half=half,
+                        show_conf=show_conf,
+                        save_txt=save_txt,
+                        show_labels=show_labels,
+                        save=save,
+                        save_mot=save_mot,
+                        save_id_crops=save_id_crops,
+                        verbose=verbose,
+                        exist_ok=exist_ok,
+                        save_dir=save_dir,
+                        name=name,
+                        classes=classes,
+                        per_class=per_class,
+                        vid_stride=vid_stride,
+                        line_width=line_width)
 
-    # config_file = 'td-hm_hrnet-w48_8xb32-210e_coco-256x192.py'
-    # checkpoint_file = 'td-hm_hrnet-w48_8xb32-210e_coco-256x192-0e67c616_20220913.pth'
-    # model = init_model(config_file, checkpoint_file, device='cuda:0')  # or device='cpu'
+    yolo = YOLO(weights)
 
-    weights_name = 'mmpose'
+    results = yolo.track(
+        source=source,
+        stream=stream,
+        persist=False,
 
-    '''Directories'''
-    save_img = not dont_save and not source.endswith('.txt')  # save inference images
-
-    save_dir = paths.video_inferred_path / weights_name
-    save_txt = paths.bbox_coordinates_path / weights_name
-    save_label = paths.labels_path / weights_name
-    save_logs = paths.logs_path / weights_name
-
-    save_dir.mkdir(parents=True, exist_ok=True)  # create directory
-    save_txt.mkdir(parents=True, exist_ok=True)  # create directory
-    save_label.mkdir(parents=True, exist_ok=True)  # create directory
-    # save_logs.mkdir(parents=True, exist_ok=True)  # create directory
-
-    '''Pose Estimator'''
-    inferencer = MMPoseInferencer(
-        pose2d='human',
-        det_model='yolox_l_8x8_300e_coco',
-        det_cat_ids=[0],  # the category id of 'human' class
+        conf=conf,
+        iou=iou,
+        show=show,
+        device=device,
+        show_conf=show_conf,
+        save_txt=save_txt,
+        show_labels=show_labels,
+        save=save,
+        verbose=verbose,
+        exist_ok=exist_ok,
+        project=save_dir,
+        name=name,
+        classes=classes,
+        imgsz=img_size,
+        vid_stride=vid_stride,
+        line_width=line_width
     )
 
-    '''Initialize Tracker'''
-    detector = Detector(classes = [0])
-    detector.load_model(weights) 
-    wrapper = YOLOv7_DeepSORT(reID_model_path="./deep_sort/model_weights/mars-small128.pb", detector=detector)
-    tracker = wrapper.tracker
+    yolo.add_callback('on_predict_start', partial(on_predict_start, persist=True))
 
-    encoder = wrapper.encoder
+    if 'yolov8' not in str(args.yolo_model):
+        # replace yolov8 model
+        m = get_yolo_inferer(args.yolo_model)
+        model = m(
+            model=args.yolo_model,
+            device=yolo.predictor.device,
+            args=yolo.predictor.args
+        )
+        yolo.predictor.model = model
 
-    '''Logs'''
-    pose_logs={
-        'pose_detection': {}
-    }
+    yolo.predictor.custom_args = args
 
-    '''Set Dataloader'''
-    stride = 32
-    imgsz = check_img_size(img_size, s=stride)
-    vid_path, vid_writer = None, None
-    dataset = LoadImages(source, img_size=imgsz, stride=stride)
-    names = ['human']
-    colors = [[random.randint(0, 255) for _ in range(3)] for _ in names]
+    '''Color Masks'''
+    # green_lower = np.array([50, 100, 100])
+    # green_upper = np.array([70, 255, 255])
 
-    '''Dummy Equation of Arc'''
-    arcUp = [-0.0105011, 0.0977268, -0.308306, 0.315377, -0.229249, 2.11325]
-    arcDown = [0.000527976, 0.00386626, 0.0291599, 0.121282, -2.22398]
+    # white_lower = np.array([0, 0, 200])
+    # white_upper = np.array([180, 50, 255])
 
-    polyUp = np.poly1d(arcUp)
-    polyDown = np.poly1d(arcDown)
+    green_lower = np.array([45, 20, 100])
+    green_upper = np.array([70, 255, 255])
 
-    for path, img, im0s, image, vid_cap in dataset:
+    white_lower = np.array([0, 0, 160])
+    white_upper = np.array([180, 50, 255])
 
-        result_generator = inferencer(image, show=view_img) # vis_out_dir='datasets'
-        result = next(result_generator)
+    for frame_idx, r in enumerate(results):
+        ''' Convert image to HSV'''
+        hsv_img = cv2.cvtColor(r.orig_img, cv2.COLOR_BGR2HSV)
+        green_mask = np.zeros_like(hsv_img[:, :, 0])
+        white_mask = np.zeros_like(hsv_img[:, :, 0])
 
-        bboxes=[]
-        bbox_scores=[]
-        for i, det in enumerate(result['predictions'][0]):
-            p, s, im0, frame = path, '', im0s, getattr(dataset, 'frame', 0)
-            pose_logs['pose_detection'][frame] = {}
-            keypoints=det['keypoints']
-            bbox=det['bbox'][0]
-            bbox_score=det['bbox_score']
-            bboxes.append(bbox)
-            bbox_scores.append(bbox_score)
+        if r.boxes.data.shape[1] == 7:
+            if yolo.predictor.source_type.webcam or source.endswith(VID_FORMATS):
+                p = yolo.predictor.save_dir / 'mot' / (source + '.txt')
+                yolo.predictor.mot_txt_path = p
+            elif 'MOT16' or 'MOT17' or 'MOT20' in source:
+                p = yolo.predictor.save_dir / 'mot' / (Path(source).parent.name + '.txt')
+                yolo.predictor.mot_txt_path = p
 
-            # kpts=[]
-            # for kpt in keypoints:
-            #     kpts.append(cv2.KeyPoint(kpt[1], kpt[1], 1))
+            if save_mot:
+                write_mot_results(yolo.predictor.mot_txt_path, r, frame_idx)
 
-            p = Path(p)  # to Path
-            filename = (p.name.replace(" ", "_"))
-            save_label_video = Path(save_label / (filename.split('.')[0]))
-            save_label_video.mkdir(parents=True, exist_ok=True)  # make dir
-            label_per_frame = str(save_label_video / (str(frame) + '.txt'))
-            save_path = str(save_dir / (filename.split('.')[0] + "_pose_out" + ".mp4"))  # img.jpg
-            txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
-            #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
-            cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
+            if save_id_crops:
+                for d in r.boxes:
+                    # print('args.save_id_crops', d.data)
+                    save_one_box(
+                        d.xyxy,
+                        r.orig_img.copy(),
+                        file=(
+                            yolo.predictor.save_dir / 'crops' /
+                            str(int(d.cls.cpu().numpy().item())) /
+                            str(int(d.id.cpu().numpy().item())) / f'{frame_idx}.jpg'
+                        ),
+                        BGR=True
+                    )
+            for det in r.boxes:
+                x, y, w, h = det.xywh.cpu().numpy()[0]
 
-            # plot_kpts(im0, kpts=kpts, steps=3, orig_shape=im0.shape[:2])
+                player_roi = hsv_img[int(y):int(y+h), int(x):int(x+w), :]
+                mean_color = np.mean(player_roi, axis=(0, 1))
 
-            '''Get Position'''
-            xy=[]
-            num_kpts = len(keypoints)
+                print(mean_color)
 
-            for i in range(num_kpts):
-                x_coord, y_coord = keypoints[i][0], keypoints[i][1]
-                xy.append([int(x_coord), int(y_coord)])
+                if (mean_color >= white_lower).all() and (mean_color <= white_upper).all():
+                    white_mask[int(y):int(y+h), int(x):int(x+w)] = 1
+                    print(str(det.id.cpu().numpy().item()) + " is in team white")
+                elif(mean_color >= green_lower).all() and (mean_color <= green_upper).all():
+                    green_mask[int(y):int(y+h), int(x):int(x+w)] = 1
+                    print(str(det.id.cpu().numpy().item()) + " is in team green")
 
-            # ratio set according to scale of axis
-            ratio_x = (image.shape[1])/20 
-            ratio_y = (image.shape[0])/5.8
-
-            x_center = (image.shape[1]/2)/ratio_x   # width
-            y_center = (image.shape[0]/2)/ratio_y   # height
-
-            x_new = (xy[-1][0])/ratio_x - x_center
-            y_new = (xy[-1][1])/ratio_y - y_center
-
-            yUp = polyUp(x_new)
-            yDown = polyDown(x_new)
-
-            position=""
-            if yUp > y_new and yDown < y_new:
-                position = "2_points"
-            else:
-                position = "3_points"
-
-            '''Normalize bbox
-            # xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-            # xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
-            # xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
-            # line = [str(frame), names[int(cls)], xywh, str(round(float(conf), 5))]
-
-            # kpts = det[det_index, 6:]
-            # with open(txt_path, 'a') as f:
-            #     f.write(('\t'.join(line)) + '\n')
-
-            # label = [str(int(cls)), xywh_label]
-            # with open(label_per_frame, 'a') as f:
-            #     f.write((' '.join(label)) + '\n') 
-            '''
-
-            '''Write Results to txt'''
-            xywh = '\t'.join(map(str, ['%.5f' % elem for elem in bbox]))
-            line = [str(frame), 'human', xywh, str(round(float(det['bbox_score']), 5))]
-            with open(txt_path, 'a') as f:
-                f.write(('\t'.join(line)) + '\n')
-
-            xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in bbox]))
-            label = ['human', xywh_label]
-            with open(label_per_frame, 'a') as f:
-                f.write((' '.join(label)) + '\n')
-
-        if track:
-            if result is None:
-                bboxes = []
-                scores = []
-                classes = []
-                num_objects = 0
-            
-            else:
-                for box in bboxes: # convert from xyxy to xywh
-                    box[2] = box[2] - box[0] 
-                    box[3] = box[3] - box[1]
-
-                scores = bbox_scores
-                classes = ['human']
-                num_objects = 1
-
-            names = []
-            for i in range(num_objects):
-                # class_indx = int(classes[i])
-                class_name = "human"
-                names.append(class_name)
-
-            names = np.array(names)
-            count = len(names)
-
-            features = encoder(im0s, bboxes) # encode detections and feed to tracker. [No of BB / detections per frame, embed_size]
-            detections = [Detection(bbox, score, class_name, feature) for bbox, score, class_name, feature in zip(bboxes, scores, names, features)]
-
-            boxes = np.array([d.tlwh for d in detections])  # run non-maxima supression below
-            scores = np.array([d.confidence for d in detections])
-            classes = np.array([d.class_name for d in detections])
-            indices = preprocessing.non_max_suppression(boxes, classes, 1.0, scores)
-            detections = [detections[i] for i in indices]  
-
-            tracker.predict()
-            tracker.update(detections)
-            tracked_dets = tracker.tracks
-
-            # Check if there are tracked persons
-            if len(tracked_dets) > 0:
-                for track in tracked_dets:
-                    identities = int(track.track_id)
-                    bbox_xyxy = track.to_tlbr()     # Get current position in bounding box format (min x, miny, max x, max y)
-                    class_name = track.get_class()
-                    categories = class_name
-                    confidences = None
-
-                    player_id = "player_" + str(identities)
-
-                    if(player_id not in pose_logs['pose_detection'][frame]):
-                        pose_logs['pose_detection'][frame][player_id] = []
-
-                    # Add Tracked Person to Logs
-                    player_entry = {
-                        "player_id": str(identities),
-                        "bbox_coords": bbox_xyxy.tolist(),
-                        "feet_coords": list(xy[-1]),
-                        "position": position
-                    }
-                    pose_logs['pose_detection'][frame][player_id].append(player_entry)
-
-                    # Draw Boxes on Image
-                    im0 = draw_boxes_tracked(im0, bbox_xyxy, identities, categories, confidences, names, colors)
-                
-        '''Print inference and NMS time'''
-        # print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
-
-        '''Stream results'''
-        if view_img:
-            cv2.imshow(str(p), im0)
-            cv2.waitKey(1)  # 1 millisecond
-
-        '''Save results (video with detections)'''
-        if save_img:
-            if vid_path != save_path:  # new video
-                vid_path = save_path
-                if isinstance(vid_writer, cv2.VideoWriter):
-                    vid_writer.release()  # release previous video writer
-                if vid_cap:  # video
-                    fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                    w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                    h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                else:  # stream
-                    fps, w, h = 30, im0.shape[1], im0.shape[0]
-                    save_path += '.mp4'
-                vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-            vid_writer.write(im0)
-
-    # print(f'Done. ({time.time() - t0:.3f}s)')
-
-        # results = inference_topdown(model, im0)
-        # print(result)
-    
-    return pose_logs
+    if save_mot:
+        print(f'MOT results saved to {yolo.predictor.mot_txt_path}')
 
 
 def detect_pose(weights: str = 'yolov7.pt',
@@ -373,7 +312,6 @@ def detect_pose(weights: str = 'yolov7.pt',
     save_dir.mkdir(parents=True, exist_ok=True)  # create directory
     save_txt.mkdir(parents=True, exist_ok=True)  # create directory
     save_label.mkdir(parents=True, exist_ok=True)  # create directory
-    # save_logs.mkdir(parents=True, exist_ok=True)  # create directory
 
     '''Initialize'''
     set_logging()
@@ -460,15 +398,12 @@ def detect_pose(weights: str = 'yolov7.pt',
                 label_per_frame = str(save_label_video / (str(frame) + '.txt'))
                 save_path = str(save_dir / (filename.split('.')[0] + "_pose_out" + ".mp4"))  # img.jpg
                 txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
-                #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
+                
                 cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
 
                 gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
                 dets_to_sort = np.empty((0, 6))
                 if len(det):
-                    # '''Remove empty entry'''
-                    # pose_logs['pose_detection'][frame].remove(pose_logs['pose_detection'][frame][0])
-
                     '''Rescale boxes from img_size to im0 size'''
                     det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape, kpt_label=False).round()
                     # Rescale keypoints to original image size
@@ -599,6 +534,13 @@ def detect_pose(weights: str = 'yolov7.pt',
                                     "feet_coords": list(xy[-1]),
                                     "position": position
                                 }
+                                pose_db.insert_into_pose_table(
+                                    frame_num=frame,
+                                    player_num= int(identities),
+                                    bbox_coords= bbox_xyxy.tolist(),
+                                    feet_coords= list(xy[-1]),
+                                    position= position
+                                )
                                 pose_logs['pose_detection'][frame][player_id].append(player_entry)
 
                                 # Draw Boxes on Image
@@ -659,18 +601,9 @@ def detect_basketball(weights: str = 'yolov7.pt',
     """
     time.sleep(5)
     print("weigths: ", weights)
-    # print(source)
     ##################################################################################################################################################
     # Parameters
-    ##################################################################################################################################################
-    '''Variables for counting the shots made'''
-    frames_shot_made: list = []
-    NUMBER_OF_FRAMES_AFTER_SHOT_MADE = 10
-    shotmade = 0
-    history = []
-    for _ in range(NUMBER_OF_FRAMES_AFTER_SHOT_MADE):
-        history.append(False)
-    
+    ##################################################################################################################################################    
     save_img = not dont_save and not source.endswith('.txt')  # save inference images
 
     weights_name = weights.split('/')[1] 
@@ -679,12 +612,10 @@ def detect_basketball(weights: str = 'yolov7.pt',
     save_dir = paths.video_inferred_path / weights_name
     save_txt = paths.bbox_coordinates_path / weights_name
     save_label = paths.labels_path / weights_name
-    save_logs = paths.logs_path / weights_name
 
     save_dir.mkdir(parents=True, exist_ok=True)  # create directory
     save_txt.mkdir(parents=True, exist_ok=True)  # create directory
     save_label.mkdir(parents=True, exist_ok=True)  # create directory
-    # save_logs.mkdir(parents=True, exist_ok=True)  # create directory
 
     '''Initialize'''
     set_logging()
@@ -761,7 +692,7 @@ def detect_basketball(weights: str = 'yolov7.pt',
                 label_per_frame = str(save_label_video / (str(frame) + '.txt'))
                 save_path = str(save_dir / (filename.split('.')[0] + "_nethoopbasket_out" + ".mp4"))  # img.jpg
                 txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
-                #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
+                
                 cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
 
                 gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
@@ -796,15 +727,6 @@ def detect_basketball(weights: str = 'yolov7.pt',
                         #if frame % NUMBER_OF_FRAMES_PER_LABEL == 0:
                         with open(label_per_frame, 'a') as f:
                             f.write((' '.join(label)) + '\n')
-
-                        cv2.putText(im0, f'Shots Made: {shotmade}', (25, 25), 0, 1, [0, 255, 255], thickness=2, lineType=cv2.LINE_AA)
-                        if names[int(cls)] == "netbasket":
-                            if any(history[-NUMBER_OF_FRAMES_AFTER_SHOT_MADE:]):
-                                history.append(False)
-                            else:
-                                shotmade += 1
-                                frames_shot_made.append(frame)
-                                history.append(True)
                             
                         if save_img or view_img:  # Add bbox to image
                             label = names[int(cls)]
@@ -815,6 +737,11 @@ def detect_basketball(weights: str = 'yolov7.pt',
                             "shot": label,
                             "bbox_coords": [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]
                         }
+                        basket_db.insert_into_basket_table(
+                            frame_num=frame,
+                            shot=label,
+                            bbox_coords= [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]
+                        )
                         basketball_logs['basketball_detection'][frame].append(frame_entry)
 
                     dets_to_sort = np.empty((0, 6))
@@ -849,7 +776,6 @@ def detect_basketball(weights: str = 'yolov7.pt',
 
     print(f'Done. ({time.time() - t0:.3f}s)')
     
-    print(f'Total Made Shots: {shotmade}')
     return basketball_logs
 
 
@@ -878,7 +804,6 @@ def detect_actions(weights: str = 'yolov7.pt',
     """
     time.sleep(5)
     print("weigths: ", weights)
-    # print(source)
     ##################################################################################################################################################
     # Parameters
     ##################################################################################################################################################
@@ -891,12 +816,10 @@ def detect_actions(weights: str = 'yolov7.pt',
     save_dir = paths.video_inferred_path / weights_name
     save_txt = paths.bbox_coordinates_path / weights_name
     save_label = paths.labels_path / weights_name
-    save_logs = paths.logs_path / weights_name
 
     save_dir.mkdir(parents=True, exist_ok=True)  # create directory
     save_txt.mkdir(parents=True, exist_ok=True)  # create directory
     save_label.mkdir(parents=True, exist_ok=True)  # create directory
-    # save_logs.mkdir(parents=True, exist_ok=True)  # create directory
 
     '''Initialize'''
     set_logging()
@@ -1018,6 +941,11 @@ def detect_actions(weights: str = 'yolov7.pt',
                             "action": label,
                             "bbox_coords": [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]
                         }
+                        action_db.insert_into_action_table(
+                            frame_num=frame,
+                            action=label,
+                            bbox_coords= [xyxy[0].item(), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()]
+                        )
                         actions_logs['action_detection'][frame].append(frame_entry)
 
                     dets_to_sort = np.empty((0, 6))
@@ -1069,31 +997,6 @@ def writeToLog(logs_path, logs):
         with open(logs_path,'w') as yamlfile:
             yaml.safe_dump(logs, yamlfile)
 
-
-def set_max_split_size_mb(model, max_split_size_mb):
-    """
-    Set the max_split_size_mb parameter in PyTorch to avoid fragmentation.
-
-    Args:
-        model (torch.nn.Module): The PyTorch model.
-        max_split_size_mb (int): The desired value for max_split_size_mb in megabytes.
-    """
-    for param in model.parameters():
-        param.requires_grad = False  # Disable gradient calculation to prevent unnecessary memory allocations
-
-    # Dummy forward pass to initialize the memory allocator
-    dummy_input = torch.randn(1, 1)
-    model(dummy_input)
-
-    # Get the current memory allocator state
-    allocator = torch.cuda.memory._get_memory_allocator()
-
-    # Update max_split_size_mb in the memory allocator
-    allocator.set_max_split_size(max_split_size_mb * 1024 * 1024)
-
-    for param in model.parameters():
-        param.requires_grad = True 
-
        
 def detect_all(game_id: str = ''):
     videoPath, dataLogFilePath = get_game_data(game_id=game_id)
@@ -1108,27 +1011,32 @@ def detect_all(game_id: str = ''):
             Detect
         '''
         # Actions
+        action_db.create_database(game_id)
+        action_db.create_action_table()
         actions_logs = detect_actions(weights=action_weights, source=videoPath, dont_save=False)
         strip_optimizer(action_weights)
+        action_db.close_db()
         writeToLog(dataLogFilePath, actions_logs)
 
         # Basketball
+        basket_db.create_database(game_id)
+        basket_db.create_basket_table()
         basketball_logs = detect_basketball(weights=basket_weights, source=videoPath, dont_save=False)
         strip_optimizer(basket_weights)
+        basket_db.close_db()
         writeToLog(dataLogFilePath, basketball_logs)
 
         # Pose
+        pose_db.create_database(game_id)
+        pose_db.create_pose_table()
         pose_logs = detect_pose(weights=pose_weights, source=videoPath, dont_save=False)
         strip_optimizer(pose_weights)
+        pose_db.close_db()
         writeToLog(dataLogFilePath, pose_logs)
-
-        # # New Pose
-        # new_pose(source=videoPath, weights=pose_weights)
 
 
 if __name__ == '__main__':
     # extract_key_frames(dataset_folder='HardwareDatasetOne', video_max_len = 500, video_res = 128, device = "cpu")
-    
-    detect_all(game_id='PhoneDatasetOne_1')
+    detect_all(game_id='IMG_2892')
 
     
