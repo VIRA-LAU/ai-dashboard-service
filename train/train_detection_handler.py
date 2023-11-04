@@ -554,7 +554,8 @@ def train_detection_evolve(hyp, opt, device):
             'mosaic': (1, 0.0, 1.0),  # image mixup (probability)
             'mixup': (1, 0.0, 1.0),   # image mixup (probability)
             'copy_paste': (1, 0.0, 1.0),  # segment copy-paste (probability)
-            'paste_in': (1, 0.0, 1.0)}    # segment copy-paste (probability)
+            'paste_in': (1, 0.0, 1.0), # segment copy-paste (probability)
+            'loss_ota': (1, 0.0, 1.0)} # use ComputeLossOTA, use 0 for faster training    
     
     with open(opt.hyp, errors='ignore') as f:
         hyp = yaml.safe_load(f)  # load hyps dict
@@ -568,7 +569,7 @@ def train_detection_evolve(hyp, opt, device):
     if opt.bucket:
         os.system('gsutil cp gs://%s/evolve.txt .' % opt.bucket)  # download evolve.txt if exists
 
-    for _ in range(300):  # generations to evolve
+    for _ in range(opt.generations):  # generations to evolve
         if Path('evolve.txt').exists():  # if evolve.txt exists: select best hyps and mutate
             # Select parent(s)
             parent = 'single'  # parent selection method: 'single' or 'weighted'

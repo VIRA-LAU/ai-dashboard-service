@@ -100,6 +100,7 @@ def parse_detection(weights: str = 'yolov7.pt',
                     notest: bool = False,
                     noautoanchor: bool = False,
                     evolve: bool = False,
+                    generations: int = 300,
                     bucket: str = '',
                     cache_images: bool = False,
                     image_weights: bool = False,
@@ -139,6 +140,7 @@ def parse_detection(weights: str = 'yolov7.pt',
     parser.add_argument('--notest', action='store_true', default=notest, help='only test final epoch')
     parser.add_argument('--noautoanchor', action='store_true', default=noautoanchor, help='disable autoanchor check')
     parser.add_argument('--evolve', action='store_true', default=evolve, help='evolve hyperparameters')
+    parser.add_argument('--generations', action='store_true', default=generations, help='evolve generations')
     parser.add_argument('--bucket', type=str, default=bucket, help='gsutil bucket')
     parser.add_argument('--cache-images', action='store_true', default=cache_images, help='cache images for faster training')
     parser.add_argument('--image-weights', action='store_true', default=image_weights, help='use weighted image selection for training')

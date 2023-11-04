@@ -26,3 +26,4 @@ weights/*
 runs/*
 
 yolov8n.pt
+sam_b.pt

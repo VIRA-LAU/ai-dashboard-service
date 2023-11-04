@@ -33,6 +33,7 @@ def run_train_detection(weights: str = 'yolov7.pt',
                     notest: bool = False,
                     noautoanchor: bool = False,
                     evolve: bool = False,
+                    generations: int = 300,
                     bucket: str = '',
                     cache_images: bool = False,
                     image_weights: bool = False,
@@ -71,6 +72,7 @@ def run_train_detection(weights: str = 'yolov7.pt',
                     notest  = notest,
                     noautoanchor = noautoanchor,
                     evolve = evolve,
+                    generations = generations,
                     bucket = bucket,
                     cache_images = cache_images,
                     image_weights = image_weights,
@@ -155,6 +157,18 @@ def run_train_segmentation():
 
 
 if __name__ == "__main__":
-    run_train_detection(evolve=True, hyp='train/cfg/object_detection/hyperparametrs/hyp.yanl', adam=True)
-    # run_auto_annotator_segmentation()
+    print(torch.cuda.is_available())
+
+    '''Weights Location'''
+    actions_weight = 'weights/actions_2.pt'
+    netbasket_weights = 'weights/net_hoop_basket_combined_april.pt'
+
+    '''Dataset Location'''
+    actions_dataset_path = 'datasets/training_datasets/object_detection/actions/PhoneDatasetThree/data.yaml'
+    netbasket_dataset_path = 'datasets/training_datasets/object_detection/netbasket/PhoneDatasetThree/data.yaml'
+
+    '''Hyperparameters Location'''
+    test_hyp = 'train/cfg/object_detection/hyperparameters/hyp_learning_rate.yaml'
+    # run_train_detection(weights=actions_weight, device='0', data=actions_dataset_path, evolve=False, generations=30, epochs=150, batch_size=8, name='learning_rate_training', exist_ok=True, hyp=test_hyp)
+    run_auto_annotator_segmentation()
     # run_train_segmentation()
