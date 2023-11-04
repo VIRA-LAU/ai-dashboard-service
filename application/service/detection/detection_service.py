@@ -55,7 +55,7 @@ class DetectionService:
         #                  'team_1': {'players': [{'player_1': {'scored': 3, 'missed': 0}}], 'points': 3,
         #                             'possession': '100.0 %'},
         #                  'team_2': {'players': [], 'points': 0, 'possession': '0.0 %'}}
-        #delete_downloaded_video(game_id)
+        delete_downloaded_video(game_id)
         requests.patch(
             url=f'http://ec2-16-170-232-235.eu-north-1.compute.amazonaws.com:3000/ai/video_processed/{game_id}',
             data=json.dumps(stats),
