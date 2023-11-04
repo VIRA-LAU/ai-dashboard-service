@@ -11,3 +11,8 @@ nc: 3
 # netempty: 1
 # basketball: 2
 names: [ 'netbasket', 'netempty', 'basketball' ]
+
+# Roboflow:
+# basketball: 0
+# netempty: 1
+# netbasket: 2

@@ -334,7 +334,7 @@ def resample_segments(segments, n=1000):
 #     clip_coords(coords, img0_shape)
 #     return coords
 
-def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None, kpt_label=False, step=2):
+def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None, kpt_label=False, single=False, step=2):
     # Rescale coords (xyxy) from img1_shape to img0_shape
     if ratio_pad is None:  # calculate from img0_shape
         gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
@@ -368,7 +368,7 @@ def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None, kpt_label=False
 #     boxes[:, 2].clamp_(0, img_shape[1])  # x2
 #     boxes[:, 3].clamp_(0, img_shape[0])  # y2
 
-def clip_coords(boxes, img_shape, step=2,kpt_label=False):
+def clip_coords(boxes, img_shape, step=2,kpt_label=False, single=False):
     # Clip bounding xyxy bounding boxes to image shape (height, width)
     if (kpt_label):
         boxes[:, 0::step].clamp_(0, img_shape[1])  # x1

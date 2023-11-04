@@ -12,3 +12,6 @@ nc: 4
 # shooting: 2
 # dribbling: 3
 names: [ 'no action', 'walking', 'shooting', 'dribbling' ]
+
+# Roboflow
+# names: ['dribbling', 'no action', 'shooting', 'walking']

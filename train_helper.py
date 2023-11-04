@@ -155,6 +155,6 @@ def run_train_segmentation():
 
 
 if __name__ == "__main__":
-    run_train_detection(evolve=True)
+    run_train_detection(evolve=True, hyp='train/cfg/object_detection/hyperparametrs/hyp.yanl', adam=True)
     # run_auto_annotator_segmentation()
     # run_train_segmentation()
