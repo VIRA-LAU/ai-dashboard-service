@@ -1,0 +1,3 @@
+uvicorn main:app --reload --host localhost
+
+ngrok.exe http --domain=polished-remotely-troll.ngrok-free.app 8000

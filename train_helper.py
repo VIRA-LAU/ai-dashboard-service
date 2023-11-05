@@ -169,6 +169,6 @@ if __name__ == "__main__":
 
     '''Hyperparameters Location'''
     test_hyp = 'train/cfg/object_detection/hyperparameters/hyp_learning_rate.yaml'
-    # run_train_detection(weights=actions_weight, device='0', data=actions_dataset_path, evolve=False, generations=30, epochs=150, batch_size=8, name='learning_rate_training', exist_ok=True, hyp=test_hyp)
-    run_auto_annotator_segmentation()
+    run_train_detection(weights=actions_weight, device='0', data=actions_dataset_path, evolve=False, generations=30, epochs=150, batch_size=8, name='learning_rate_training_test', exist_ok=True, hyp=test_hyp)
+    # run_auto_annotator_segmentation()
     # run_train_segmentation()
