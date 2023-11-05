@@ -13,11 +13,11 @@ from core.song_player import give_song
 from core.video_concat import video_concat
 from core.video_splitter import video_splitter
 from detect import detect_all
-from dev_utils.aws_conn.delete_downloaded_video import delete_downloaded_video
-from dev_utils.aws_conn.download_hosted_video import download_video
-from dev_utils.aws_conn.upload_detected_video import upload_highlights_to_s3
+from utils.aws.delete_downloaded_video import delete_downloaded_video
+from utils.aws.download_hosted_video import download_video
+from utils.aws.upload_detected_video import upload_highlights_to_s3
 from getstats import getsShots
-from dev_utils.handle_db.stats_handler import getAPIStats, getNetbasketCoordinatesFrames
+from utils.handle_db.stats_handler import getAPIStats, getNetbasketCoordinatesFrames
 from post_process import process_video
 import persistence.repositories.paths as paths
 

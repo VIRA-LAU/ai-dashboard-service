@@ -1,7 +1,7 @@
 import sqlite3
 
 import persistence.repositories.paths as path
-import dev_utils.common.formatting as formatting
+import utils.common.formatting as formatting
 
 _conn = sqlite3.Connection
 _cursor = sqlite3.Cursor

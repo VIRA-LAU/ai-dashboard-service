@@ -1,5 +1,5 @@
 import persistence.repositories.paths as paths
-from dev_utils.paths import dirs
+from utils.paths import dirs
 import os
 
 

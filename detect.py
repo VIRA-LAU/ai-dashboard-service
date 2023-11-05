@@ -7,7 +7,7 @@ import yaml
 
 from bridge_wrapper import *
 from detection_helpers import *
-from dev_utils.paths.game import get_game_data
+from utils.paths.game import get_game_data
 from persistence.repositories import paths
 from tracking_helpers import *
 from utils.datasets import LoadImages
@@ -15,9 +15,9 @@ from utils.general import strip_optimizer, set_logging, non_max_suppression_kpt
 from utils.google_utils import gdrive_download
 from utils.plots import output_to_keypoint, plot_kpts
 from utils.torch_utils import time_synchronized
-import dev_utils.handle_db.action_db_handler as action_db
-import dev_utils.handle_db.basket_db_handler as basket_db
-import dev_utils.handle_db.pose_db_handler as pose_db
+import utils.handle_db.action_db_handler as action_db
+import utils.handle_db.basket_db_handler as basket_db
+import utils.handle_db.pose_db_handler as pose_db
 
 from utils.args import *
 from utils.frame_extraction import extract_frames

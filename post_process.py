@@ -7,8 +7,8 @@ import cv2
 import os
 from getstats import *
 from shared.helper.json_helpers import parse_json
-from dev_utils.paths.game import get_game_data
-from dev_utils.handle_db.post_processing_handler import getPostProcessingData
+from utils.paths.game import get_game_data
+from utils.handle_db.post_processing_handler import getPostProcessingData
 import persistence.repositories.paths as paths
 
 '''

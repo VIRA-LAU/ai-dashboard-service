@@ -1,6 +1,6 @@
 import requests
 import persistence.repositories.paths as paths
-import dev_utils.paths.dirs as dirs
+import utils.paths.dirs as dirs
 
 def download_video(game_id: str):
     response = requests.get(paths.hosted_videos_input_path + game_id + '.mp4')

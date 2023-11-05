@@ -13,7 +13,7 @@ from core.video_concat import video_concat
 from domain.models.upload_video_fb import upload_video
 from application.service.highlights_handler import highlights_service
 from application.service.lock_handler import lock_service
-from dev_utils.aws_conn.download_hosted_video import download_video
+from utils.aws.download_hosted_video import download_video
 from pydantic import BaseModel
 from typing import Union
 

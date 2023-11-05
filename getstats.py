@@ -3,7 +3,7 @@ import yaml
 
 import cv2
 
-from dev_utils.paths.game import get_game_data
+from utils.paths.game import get_game_data
 
 
 '''
