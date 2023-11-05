@@ -1,5 +1,5 @@
 from pathlib import Path
-from dev_utils.paths import dirs
+from utils.paths import dirs
 from shared.helper.json_helpers import parse_json
 root_dir = dirs.getRootDir()
 paths_file = str(root_dir / "assets/paths.json")

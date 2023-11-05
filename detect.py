@@ -63,6 +63,31 @@ from colormath.color_diff import delta_e_cie2000
 
 from utils.faiss_kmeans import FaissKMeans
 
+import hydra
+
+from engine.predictor import BasePredictor
+from utils import DEFAULT_CONFIG, ROOT, ops
+from utils.checks import check_imgsz
+from utils.plotting import Annotator, colors, save_one_box
+
+import cv2
+from deep_sort_pytorch.utils.parser import get_config
+from deep_sort_pytorch.deep_sort import DeepSort
+
+
+deepsort = None
+
+def init_tracker():
+    global deepsort
+    cfg_deep = get_config()
+    cfg_deep.merge_from_file("deep_sort_pytorch/configs/deep_sort.yaml")
+
+    deepsort= DeepSort(cfg_deep.DEEPSORT.REID_CKPT,
+                            max_dist=cfg_deep.DEEPSORT.MAX_DIST, min_confidence=cfg_deep.DEEPSORT.MIN_CONFIDENCE,
+                            nms_max_overlap=cfg_deep.DEEPSORT.NMS_MAX_OVERLAP, max_iou_distance=cfg_deep.DEEPSORT.MAX_IOU_DISTANCE,
+                            max_age=cfg_deep.DEEPSORT.MAX_AGE, n_init=cfg_deep.DEEPSORT.N_INIT, nn_budget=cfg_deep.DEEPSORT.NN_BUDGET,
+                            use_cuda=True)
+
 
 def draw_boxes_tracked(img, bbox, identities=None, categories=None, confidences=None, names=None, colors=None):
     """
@@ -241,7 +266,6 @@ def prety_print_data(color_info):
     for x in color_info:
         print(pprint.pformat(x))
         print()
-     
 
 
 def instance_segmentation(weights: str = 'yolov8.pt',
@@ -269,9 +293,12 @@ def instance_segmentation(weights: str = 'yolov8.pt',
                         per_class: bool = False,
                         vid_stride: int = 1,
                         line_width: int = 3,
-                        view_img: bool = False):
+                        view_img: bool = False,
+                        track: bool = True):
 
     weights_name = weights.split('/')[1] 
+
+    color_det = not track
 
     '''Directories'''
     save_dir = paths.video_inferred_path / weights_name
@@ -289,6 +316,14 @@ def instance_segmentation(weights: str = 'yolov8.pt',
     # model = TracedModel(model, device, img_size)
     # if half:
     #     model.half()  # to FP16
+
+    '''Initialize Tracker'''
+    detector = Detector(classes = [0])
+    detector.load_model(weights) 
+    wrapper = YOLOv7_DeepSORT(reID_model_path="./deep_sort/model_weights/mars-small128.pb", detector=detector)
+    tracker = wrapper.tracker
+
+    encoder = wrapper.encoder
 
     '''Logging'''
     seg_logs={
@@ -350,110 +385,177 @@ def instance_segmentation(weights: str = 'yolov8.pt',
             masks = det.masks  # Masks object for segment masks outputs
             probs = det.probs  # Class probabilities for classification outputs
 
+            print(boxes)
+
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
 
             cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
 
             if masks is not None:
-                masks = masks.data.cpu()
-                for seg, box in zip(masks.data.cpu().numpy(), boxes):
+                if (color_det):
+                    masks = masks.data.cpu()
+                    for seg, box in zip(masks.data.cpu().numpy(), boxes):
 
-                    r_xyxy = scale_coords(img.shape[2:], box.xyxy.clone(), im0.shape, kpt_label=False).round()
-                    # r_xywh = scale_coords(img.shape[2:], box.xywh.clone(), im0.shape, kpt_label=False).round()
+                        r_xyxy = scale_coords(img.shape[2:], box.xyxy.clone(), im0.shape, kpt_label=False).round()
+                        # r_xywh = scale_coords(img.shape[2:], box.xywh.clone(), im0.shape, kpt_label=False).round()
 
-                    seg = cv2.resize(seg, (w, h))
-                    im0, colored_mask = overlay(im0, seg, colors[int(box.cls)], 0.4)
+                        seg = cv2.resize(seg, (w, h))
+                        im0, colored_mask = overlay(im0, seg, colors[int(box.cls)], 0.4)
 
-                    # Find the dominant color. Default is 1 , pass the parameter 'number_of_colors=N' where N is the specified number of colors 
-                    dominantColors = extractDominantColor(colored_mask,hasThresholding=True)
-
-                    # #Show in the dominant color information
-                    # print("Color Information")
-                    # prety_print_data(dominantColors)
-
-                    # #Show in the dominant color as bar
-                    # print("Color Bar")
-                    # colour_bar = plotColorBar(dominantColors)
-                    # plt.axis("off")
-                    # plt.imshow(colour_bar)
-                    # plt.show()
-
-                    red_color_diff = []
-                    blue_color_diff = []
-                    for dc in dominantColors:
-                        color = tuple(map(int,(dc['color'])))
-                        color = [round(float(i)/255.0, 2) for i in color]
-                        color_srgb = sRGBColor(color[0], color[1], color[2])
-                        color_lab = convert_color(color_srgb, LabColor)
-
-                        # Find the color difference
-                        red_color_diff.append(delta_e_cie2000(reference_red_lab, color_lab))
-                        blue_color_diff.append(delta_e_cie2000(reference_blue_lab, color_lab))
-
-                    delta_red = min(red_color_diff)
-                    delta_blue = min(blue_color_diff)
-
-                    player_id = None
-                    if delta_red < delta_blue:
-                        player_id = 1
-                    elif delta_blue < delta_red:
-                        player_id = 2
-
-                    # xywh = box.xywhn.cpu().numpy()[0] # normalized 
-                    xywh = (xyxy2xywh(torch.tensor(r_xyxy.cpu().numpy()[0]).view(1, 4)) / gn).view(-1).tolist()
-                    xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
-                    xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
-                    line = [str(frame), names[int(box.cls)], xywh, str(round(float(conf), 5))]
-                    with open(txt_path, 'a') as f:
-                        f.write(('\t'.join(line)) + '\n')
-                    label = [str(int(box.cls)), xywh_label]
-                    
-                    with open(label_per_frame, 'a') as f:
-                        f.write((' '.join(label)) + '\n')
                         
-                    if save:  # Add bbox to image
-                        label = names[int(box.cls)]
+                        # Find the dominant color. Default is 1 , pass the parameter 'number_of_colors=N' where N is the specified number of colors 
+                        dominantColors = extractDominantColor(colored_mask,hasThresholding=True)
+
+                        # #Show in the dominant color information
+                        # print("Color Information")
+                        # prety_print_data(dominantColors)
+
+                        # #Show in the dominant color as bar
+                        # print("Color Bar")
+                        # colour_bar = plotColorBar(dominantColors)
+                        # plt.axis("off")
+                        # plt.imshow(colour_bar)
+                        # plt.show()
+
+                        red_color_diff = []
+                        blue_color_diff = []
+                        for dc in dominantColors:
+                            color = tuple(map(int,(dc['color'])))
+                            color = [round(float(i)/255.0, 2) for i in color]
+                            color_srgb = sRGBColor(color[0], color[1], color[2])
+                            color_lab = convert_color(color_srgb, LabColor)
+
+                            # Find the color difference
+                            red_color_diff.append(delta_e_cie2000(reference_red_lab, color_lab))
+                            blue_color_diff.append(delta_e_cie2000(reference_blue_lab, color_lab))
+
+                        delta_red = min(red_color_diff)
+                        delta_blue = min(blue_color_diff)
+
+                        player_id = None
+                        if delta_red < delta_blue:
+                            player_id = 1
+                        elif delta_blue < delta_red:
+                            player_id = 2
+
+                elif track:
+                    # bboxes[:,2] = bboxes[:,2] - bboxes[:,0] # convert from xyxy to xywh
+                    # bboxes[:,3] = bboxes[:,3] - bboxes[:,1]
+
+                    # scores = box.conf
+                    # classes = model.names
+                    num_objects = boxes.shape[0]
+
+                    names = []
+                    for i in range(num_objects):
+                        # class_indx = int(classes[i])
+                        class_name = "person"
+                        names.append(class_name)
+
+                    names = np.array(names)
+                    count = len(names)
+
+                    features = encoder(im0, bboxes) # encode detections and feed to tracker. [No of BB / detections per frame, embed_size]
+                    detections = [Detection(bbox, score, class_name, feature) for bbox, score, class_name, feature in zip(bboxes, scores, names, features)]
+
+                    boxes = np.array([d.tlwh for d in detections])  # run non-maxima supression below
+                    scores = np.array([d.confidence for d in detections])
+                    classes = np.array([d.class_name for d in detections])
+                    indices = preprocessing.non_max_suppression(boxes, classes, 1.0, scores)
+                    detections = [detections[i] for i in indices]  
+
+                    tracker.predict()
+                    tracker.update(detections)
+                    tracked_dets = tracker.tracks
+
+                    # Check if there are tracked persons
+                    if len(tracked_dets) > 0:
+                        for track in tracked_dets:
+                            identities = int(track.track_id)
+                            bbox_xyxy = track.to_tlbr()     # Get current position in bounding box format (min x, miny, max x, max y)
+                            class_name = track.get_class()
+                            categories = class_name
+                            confidences = None
+
+                            player_id = "player_" + str(identities)
+
+                            if(player_id not in pose_logs['pose_detection'][frame]):
+                                pose_logs['pose_detection'][frame][player_id] = []
+
+                            # Add Tracked Person to Logs
+                            player_entry = {
+                                "player_id": str(identities),
+                                "bbox_coords": bbox_xyxy.tolist(),
+                                "feet_coords": list(xy[-1]),
+                                "position": position
+                            }
+                            pose_db.insert_into_pose_table(
+                                frame_num=frame,
+                                player_num= int(identities),
+                                bbox_coords= bbox_xyxy.tolist(),
+                                feet_coords= list(xy[-1]),
+                                position= position
+                            )
+                            pose_logs['pose_detection'][frame][player_id].append(player_entry)
+
+                            # Draw Boxes on Image
+                            im0 = draw_boxes_tracked(im0, bbox_xyxy, identities, categories, confidences, names, colors)
+                        
+                # xywh = box.xywhn.cpu().numpy()[0] # normalized 
+                xywh = (xyxy2xywh(torch.tensor(r_xyxy.cpu().numpy()[0]).view(1, 4)) / gn).view(-1).tolist()
+                xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
+                xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
+                line = [str(frame), names[int(box.cls)], xywh, str(round(float(conf), 5))]
+                with open(txt_path, 'a') as f:
+                    f.write(('\t'.join(line)) + '\n')
+                label = [str(int(box.cls)), xywh_label]
+                
+                with open(label_per_frame, 'a') as f:
+                    f.write((' '.join(label)) + '\n')
+                    
+                if save:  # Add bbox to image
                     label = names[int(box.cls)]
+                label = names[int(box.cls)]
 
-                    b_x, b_y, b_w, b_h = box.xywh.cpu().numpy()[0]
+                b_x, b_y, b_w, b_h = box.xywh.cpu().numpy()[0]
 
-                    x_center_below = b_x + b_w/2
-                    y_center_below = b_y + b_h
+                x_center_below = b_x + b_w/2
+                y_center_below = b_y + b_h
 
-                    yUp = polyUp(x_center_below)
-                    yDown = polyDown(x_center_below)
+                yUp = polyUp(x_center_below)
+                yDown = polyDown(x_center_below)
 
-                    position=""
-                    if yUp > y_center_below and yDown < y_center_below:
-                        position = "2_points"
-                    else:
-                        position = "3_points"
+                position=""
+                if yUp > y_center_below and yDown < y_center_below:
+                    position = "2_points"
+                else:
+                    position = "3_points"
 
-                    pose_db.insert_into_pose_table(
-                        frame_num=frame,
-                        player_num= player_id,
-                        bbox_coords= box.xyxy.tolist(),
-                        feet_coords= [int(x_center_below), int(y_center_below)],
-                        position=position
-                    )
+                pose_db.insert_into_pose_table(
+                    frame_num=frame,
+                    player_num= player_id,
+                    bbox_coords= box.xyxy.tolist(),
+                    feet_coords= [int(x_center_below), int(y_center_below)],
+                    position=position
+                )
 
-                    if(player_id not in seg_logs['segmentation'][frame]):
-                        seg_logs['segmentation'][frame][player_id] = []
+                if(player_id not in seg_logs['segmentation'][frame]):
+                    seg_logs['segmentation'][frame][player_id] = []
 
-                    # Add Tracked Person to Logs
-                    player_entry = {
-                        "player_id": str(player_id),
-                        "bbox_coords": box.xyxy.tolist(),
-                        "feet_coords": [int(x_center_below), int(y_center_below)],
-                        "position": position
-                    }
+                # Add Tracked Person to Logs
+                player_entry = {
+                    "player_id": str(player_id),
+                    "bbox_coords": box.xyxy.tolist(),
+                    "feet_coords": [int(x_center_below), int(y_center_below)],
+                    "position": position
+                }
 
-                    seg_logs['segmentation'][frame][player_id].append(player_entry)
+                seg_logs['segmentation'][frame][player_id].append(player_entry)
 
-                    label = "player: " + str(player_id)
-                    old_label = names[int(box.cls)]
+                label = "player: " + str(player_id)
+                old_label = names[int(box.cls)]
 
-                    plot_one_box(r_xyxy.cpu().numpy()[0], im0, colors[int(box.cls)], f'{label} {float(box.conf):.3}')
+                plot_one_box(r_xyxy.cpu().numpy()[0], im0, colors[int(box.cls)], f'{label} {float(box.conf):.3}')
 
         '''Stream results'''
         if view_img:
@@ -1222,7 +1324,7 @@ def detect_all(game_id: str = ''):
     action_weights = 'weights/pre-trained/actions_2.pt'
     basket_weights = 'weights/pre-trained/net_hoop_basket_combined_april.pt'
     pose_weights = 'weights/pre-trained/yolov7-w6-pose.pt'
-    instance_weights = 'weights/yolov8_person_IS_8_10_2023.pt'
+    instance_weights = 'weights/yv8_person_seg.pt'
     reid_model = 'weights/osnet_x0_25_imagenet.torchscript'
 
     '''
@@ -1260,9 +1362,8 @@ def detect_all(game_id: str = ''):
     writeToLog(dataLogFilePath, seg_logs)
 
 
-
 if __name__ == '__main__':
-    extract_key_frames(dataset_folder='PhoneDatasetSeven', video_max_len = 10000)
-    # detect_all(game_id='IMG_3050_Test')
+    # extract_key_frames(dataset_folder='PhoneDatasetSeven', video_max_len = 10000)
+    detect_all(game_id='IMG_3050_Test')
 
     

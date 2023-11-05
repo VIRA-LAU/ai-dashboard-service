@@ -68,3 +68,5 @@ ftfy
 # lap
 
 colormath
+
+# pip install --force-reinstall charset-normalizer==3.1.0
