@@ -1,123 +1,113 @@
-from PIL import Image
 from collections import Counter
-from typing import Tuple, List
+import pprint
+
+import numpy as np
+import cv2
+
+from sklearn.cluster import KMeans, MiniBatchKMeans
+from utils.faiss_kmeans import FaissKMeans
 
 
-class DominantColor:
+def removeBlack(estimator_labels, estimator_cluster):
+    # Check for black
+    hasBlack = False
 
-    resize_value: int = 16
-    minimum_percent_difference_of_rgb: int = 10
+    # Get the total number of occurance for each color
+    occurance_counter = Counter(estimator_labels)
+    
+    # Quick lambda function to compare to lists
+    compare = lambda x, y: Counter(x) == Counter(y)
+    
+    # Loop through the most common occuring color
+    for x in occurance_counter.most_common(len(estimator_cluster)):
+        # Quick List comprehension to convert each of RBG Numbers to int
+        color = [int(i) for i in estimator_cluster[x[0]].tolist() ]
+        
+        # Check if the color is [0,0,0] that if it is black 
+        if compare(color , [0,0,0]) == True:
+            # delete the occurance
+            del occurance_counter[x[0]]
+            # remove the cluster 
+            hasBlack = True
+            estimator_cluster = np.delete(estimator_cluster,x[0],0)
+            break
 
-    def __init__(self, img: Image) -> None:
-        # self.image_path = image_path
-        # self.image = Image.open(self.image_path)
-        self.image = img
-        self.dominant_color: str = ""
-        self.r: int = 0
-        self.g: int = 0
-        self.b: int = 0
-        self.l: int = 0
-        self.resized_image = self.image.resize(
-            (DominantColor.resize_value, DominantColor.resize_value), Image.Resampling.LANCZOS
-        ).convert("RGBA")
-        self.image.close()
-        self.image_data = self.resized_image.getdata()
-        self.generate_dominant_color_of_pixels_of_image_array()
-        self.resized_image.close()
-        self.counter = Counter(self.dominant_color_of_pixels_of_image_array)
-        self.set_rgbl_value_of_image()
-        self.set_dominat_color_of_image()
-        self.rgb = (self.r, self.g, self.b)
-        self.rgbl = (self.r, self.g, self.b, self.l)
+    return (occurance_counter,estimator_cluster,hasBlack)
 
-    def __repr__(self) -> str:
-        return (
-            "DominantColor(r:%s g:%s b:%s l:%s; dominant_color:%s; resize_value:%s; minimum_percent_difference_of_rgb:%s)"
-            % (
-                self.r,
-                self.g,
-                self.b,
-                self.l,
-                self.dominant_color,
-                str(self.resize_value),
-                str(self.minimum_percent_difference_of_rgb),
-            )
-        )
 
-    def __str__(self) -> str:
-        return self.dominant_color
+def getColorInformation(estimator_labels, estimator_cluster,hasThresholding=False):
+    # Variable to keep count of the occurance of each color predicted
+    occurance_counter = None
+    # Output list variable to return
+    colorInformation = []
+    #Check for Black
+    hasBlack = False
+    # If a mask has be applied, remove th black
+    if hasThresholding == True:
+        (occurance,cluster,black) = removeBlack(estimator_labels,estimator_cluster)
+        occurance_counter =  occurance
+        estimator_cluster = cluster
+        hasBlack = black        
+    else:
+        occurance_counter = Counter(estimator_labels)
+    
+    # Get the total sum of all the predicted occurances
+    totalOccurance = sum(occurance_counter.values()) 
 
-    def set_dominat_color_of_image(self) -> None:
-        self.mpd = int(
-            self.total_pixels * (DominantColor.minimum_percent_difference_of_rgb / 100)
-        )
+    # Loop through all the predicted colors
+    for x in occurance_counter.most_common(len(estimator_cluster)):
+        index = (int(x[0]))
+        # Quick fix for index out of bound when there is no threshold
+        index =  (index-1) if ((hasThresholding & hasBlack)& (int(index) !=0)) else index
+        # Get the color number into a list
+        color = estimator_cluster[index].tolist()
+        # Get the percentage of each color
+        color_percentage= (x[1]/totalOccurance)
+        #make the dictionay of the information
+        colorInfo = {"cluster_index":index , "color": color , "color_percentage" : color_percentage }
+        # Add the dictionary to the list
+        colorInformation.append(colorInfo)
+        
+    return colorInformation 
 
-        if (
-            max(
-                set(self.dominant_color_of_pixels_of_image_array),
-                key=self.dominant_color_of_pixels_of_image_array.count,
-            )
-            == "l"
-        ):
-            self.dominant_color = "l"
-            return
 
-        if (self.r - self.mpd) > self.g and (self.r - self.mpd) > self.b:
-            self.dominant_color = "r"
-            return
-        if (self.g - self.mpd) > self.b and (self.g - self.mpd) > self.r:
-            self.dominant_color = "g"
-            return
-        if (self.b - self.mpd) > self.r and (self.b - self.mpd) > self.g:
-            self.dominant_color = "b"
-            return
-        self.dominant_color = "n"
+def extractDominantColor(image,number_of_colors=5,hasThresholding=False):
+    # Quick Fix Increase cluster counter to neglect the black(Read Article) 
+    if hasThresholding == True:
+        number_of_colors +=1
+    
+    # Taking Copy of the image
+    img = image.copy()
+    # Convert Image into RGB Colours Space
+    img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
+    # Reshape Image
+    img = img.reshape((img.shape[0]*img.shape[1]) , 3)
+    #Initiate KMeans Object
+    # estimator = KMeans(n_clusters=number_of_colors, random_state=0)
+    estimator = FaissKMeans(n_clusters=number_of_colors)
+    # Fit the image
+    estimator.fit(img)
+    # Get Colour Information
+    colorInformation = getColorInformation(estimator.labels_,estimator.cluster_centers_,hasThresholding)
 
-    def set_rgbl_value_of_image(self) -> None:
-        """
-        Sets the value for attribute r,g,b and l.
+    return colorInformation
 
-        Note that these attributes indicates the number of
-        pixels which have dominating r,g,b and l values repectively.
 
-        The sum of r,g,b and l should be equal to total_pixels attribute.
-        """
-        r = self.counter.get("r")
-        g = self.counter.get("g")
-        b = self.counter.get("b")
-        l = self.counter.get("l")
+def plotColorBar(colorInformation):
+    #Create a 500x100 black image
+    color_bar = np.zeros((100,500,3), dtype="uint8")
+    top_x = 0
 
-        self.r = r if r else 0
-        self.g = g if g else 0
-        self.b = b if b else 0
-        self.l = l if l else 0
+    for x in colorInformation:    
+        bottom_x = top_x + (x["color_percentage"] * color_bar.shape[1])
+        color = tuple(map(int,(x['color'])))
+        cv2.rectangle(color_bar , (int(top_x),0) , (int(bottom_x),color_bar.shape[0]) ,color , -1)
+        top_x = bottom_x
 
-    def generate_dominant_color_of_pixels_of_image_array(self) -> None:
+    return color_bar
 
-        self.total_pixels: int = 0
-        self.dominant_color_of_pixels_of_image_array: List = []
 
-        for i in range(DominantColor.resize_value):
-
-            for j in range(DominantColor.resize_value):
-
-                self.dominant_color_of_pixels_of_image_array.append(
-                    self.dominant_color_of_pixel(self.image_data.getpixel((i, j)))
-                )
-
-                self.total_pixels += 1
-
-    def dominant_color_of_pixel(self, pixel: Tuple[int, int, int, int]) -> str:
-
-        r, g, b = pixel[0], pixel[1], pixel[2]
-
-        if r > g and r > b:
-            return "r"
-
-        if g > b and g > r:
-            return "g"
-
-        if b > r and b > g:
-            return "b"
-
-        return "l"
+def prety_print_data(color_info):
+    for x in color_info:
+        print(pprint.pformat(x))
+        print()

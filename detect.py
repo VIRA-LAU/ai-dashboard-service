@@ -14,7 +14,7 @@ from models.experimental import attempt_load
 from utils.paths.game import get_game_data
 from persistence.repositories import paths
 from utils.datasets import LoadImages
-from utils.general import strip_optimizer, set_logging, non_max_suppression_kpt, scale_coords, xyxy2xywh, non_max_suppression, check_img_size
+from utils.general import strip_optimizer, set_logging, non_max_suppression, non_max_suppression_kpt, scale_coords, xyxy2xywh, check_img_size
 from utils.torch_utils import time_synchronized, select_device, TracedModel
 import utils.handle_db.action_db_handler as action_db
 import utils.handle_db.basket_db_handler as basket_db
@@ -22,79 +22,23 @@ import utils.handle_db.pose_db_handler as pose_db
 
 from utils.args import *
 from utils.frame_extraction import extract_frames
-from utils.dominant_color import DominantColor
+from utils.dominant_color import extractDominantColor, prety_print_data, plotColorBar
 from utils.segmentation import overlay
-from utils.hist_matching import matching
 from utils.plots import plot_one_box
 
 from ultralytics import YOLO
-
-from PIL import Image as im 
 
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.use('TkAgg')
 
-from sklearn.cluster import KMeans, MiniBatchKMeans
-from collections import Counter
-import pprint
-from matplotlib import pyplot as plt
-
 from colormath.color_objects import sRGBColor, LabColor
 from colormath.color_conversions import convert_color
 from colormath.color_diff import delta_e_cie2000
 
-from utils.faiss_kmeans import FaissKMeans
-
 import cv2
-from deep_sort_pytorch.utils.parser import get_config
-from deep_sort_pytorch.deep_sort import DeepSort
-
-
-def init_tracker():
-    cfg_deep = get_config()
-    cfg_deep.merge_from_file("deep_sort_pytorch/configs/deep_sort.yaml")
-
-    deepsort= DeepSort(cfg_deep.DEEPSORT.REID_CKPT,
-                            max_dist=cfg_deep.DEEPSORT.MAX_DIST, min_confidence=cfg_deep.DEEPSORT.MIN_CONFIDENCE,
-                            nms_max_overlap=cfg_deep.DEEPSORT.NMS_MAX_OVERLAP, max_iou_distance=cfg_deep.DEEPSORT.MAX_IOU_DISTANCE,
-                            max_age=cfg_deep.DEEPSORT.MAX_AGE, n_init=cfg_deep.DEEPSORT.N_INIT, nn_budget=cfg_deep.DEEPSORT.NN_BUDGET,
-                            use_cuda=True)
-    
-    return deepsort
-
-
-def draw_boxes_tracked(img, bbox, identities=None, categories=None, confidences=None, names=None, colors=None):
-    """
-    Function to Draw Bounding boxes when tracking
-    :param img:
-    :param bbox:
-    :param identities:
-    :param categories:
-    :param confidences:
-    :param names:
-    :param colors:
-    :return: image
-    """
-    x1, y1, x2, y2 = [int(i) for i in bbox]
-    tl = round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1  # line/font thickness
-    # cat = int(categories[i]) if categories is not None else 0
-    cat = 0
-    id = int(identities) if identities is not None else 0
-    conf = confidences if confidences is not None else 0
-    color = colors[cat]
-
-    cv2.rectangle(img, (x1, y1), (x2, y2), color, tl)
-
-    id = float(str(id) + '.0')
-    tf = max(tl - 1, 1)  # font thickness
-    label = str(id)
-    t_size = cv2.getTextSize(label, 0, fontScale=tl / 3, thickness=tf)[0]
-    c2 = x1 + t_size[0], y1 - t_size[1] - 3
-    cv2.rectangle(img, (x1, y1), c2, color, -1, cv2.LINE_AA)  # filled
-    cv2.putText(img, label, (x1, y1 - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
-
-    return img
+from deep_sort.utils.parser import get_config
+from deep_sort.deep_sort import DeepSort
 
 
 def extract_key_frames(dataset_folder: str = "", video_max_len: int = 200, fps: int = 5):
@@ -105,111 +49,6 @@ def extract_key_frames(dataset_folder: str = "", video_max_len: int = 200, fps: 
     for video in os.listdir(source):
         vid_path = os.path.join(source, video)
         extract_frames(vid_path, fps, video_max_len, out_dir_frames)
-
-
-def removeBlack(estimator_labels, estimator_cluster):
-    # Check for black
-    hasBlack = False
-
-    # Get the total number of occurance for each color
-    occurance_counter = Counter(estimator_labels)
-    
-    # Quick lambda function to compare to lists
-    compare = lambda x, y: Counter(x) == Counter(y)
-    
-    # Loop through the most common occuring color
-    for x in occurance_counter.most_common(len(estimator_cluster)):
-        # Quick List comprehension to convert each of RBG Numbers to int
-        color = [int(i) for i in estimator_cluster[x[0]].tolist() ]
-        
-        # Check if the color is [0,0,0] that if it is black 
-        if compare(color , [0,0,0]) == True:
-            # delete the occurance
-            del occurance_counter[x[0]]
-            # remove the cluster 
-            hasBlack = True
-            estimator_cluster = np.delete(estimator_cluster,x[0],0)
-            break
-
-    return (occurance_counter,estimator_cluster,hasBlack)
-
-
-def getColorInformation(estimator_labels, estimator_cluster,hasThresholding=False):
-    # Variable to keep count of the occurance of each color predicted
-    occurance_counter = None
-    # Output list variable to return
-    colorInformation = []
-    #Check for Black
-    hasBlack = False
-    # If a mask has be applied, remove th black
-    if hasThresholding == True:
-        (occurance,cluster,black) = removeBlack(estimator_labels,estimator_cluster)
-        occurance_counter =  occurance
-        estimator_cluster = cluster
-        hasBlack = black        
-    else:
-        occurance_counter = Counter(estimator_labels)
-    
-    # Get the total sum of all the predicted occurances
-    totalOccurance = sum(occurance_counter.values()) 
-
-    # Loop through all the predicted colors
-    for x in occurance_counter.most_common(len(estimator_cluster)):
-        index = (int(x[0]))
-        # Quick fix for index out of bound when there is no threshold
-        index =  (index-1) if ((hasThresholding & hasBlack)& (int(index) !=0)) else index
-        # Get the color number into a list
-        color = estimator_cluster[index].tolist()
-        # Get the percentage of each color
-        color_percentage= (x[1]/totalOccurance)
-        #make the dictionay of the information
-        colorInfo = {"cluster_index":index , "color": color , "color_percentage" : color_percentage }
-        # Add the dictionary to the list
-        colorInformation.append(colorInfo)
-        
-    return colorInformation 
-
-
-def extractDominantColor(image,number_of_colors=5,hasThresholding=False):
-    # Quick Fix Increase cluster counter to neglect the black(Read Article) 
-    if hasThresholding == True:
-        number_of_colors +=1
-    
-    # Taking Copy of the image
-    img = image.copy()
-    # Convert Image into RGB Colours Space
-    img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
-    # Reshape Image
-    img = img.reshape((img.shape[0]*img.shape[1]) , 3)
-    #Initiate KMeans Object
-    # estimator = KMeans(n_clusters=number_of_colors, random_state=0)
-    estimator = FaissKMeans(n_clusters=number_of_colors)
-    # Fit the image
-    estimator.fit(img)
-    # Get Colour Information
-    colorInformation = getColorInformation(estimator.labels_,estimator.cluster_centers_,hasThresholding)
-
-    return colorInformation
-
-
-def plotColorBar(colorInformation):
-    #Create a 500x100 black image
-    color_bar = np.zeros((100,500,3), dtype="uint8")
-    top_x = 0
-
-    for x in colorInformation:    
-        bottom_x = top_x + (x["color_percentage"] * color_bar.shape[1])
-        color = tuple(map(int,(x['color'])))
-        cv2.rectangle(color_bar , (int(top_x),0) , (int(bottom_x),color_bar.shape[0]) ,color , -1)
-        top_x = bottom_x
-
-    return color_bar
-
-
-def prety_print_data(color_info):
-    for x in color_info:
-        print(pprint.pformat(x))
-        print()
 
 
 def instance_segmentation(weights: str = 'yolov8.pt',
@@ -226,7 +65,7 @@ def instance_segmentation(weights: str = 'yolov8.pt',
                         show_conf: bool=False,
                         save_txt: bool=False,
                         show_labels: bool=True,
-                        save: bool=True,
+                        dont_save: bool=True,
                         save_mot: bool=True,
                         save_id_crops: bool=True,
                         verbose: bool=True,
@@ -243,6 +82,7 @@ def instance_segmentation(weights: str = 'yolov8.pt',
     weights_name = weights.split('/')[1] 
 
     color_det = not track
+    save = not dont_save
 
     '''Directories'''
     save_dir = paths.video_inferred_path / weights_name
@@ -255,14 +95,16 @@ def instance_segmentation(weights: str = 'yolov8.pt',
 
     '''Load model'''
     model = YOLO(weights)
-    # stride = int(model.stride.max())  # model stride
-    # imgsz = check_img_size(img_size, s=stride)  # check img_size
-    # model = TracedModel(model, device, img_size)
-    # if half:
-    #     model.half()  # to FP16
 
     '''Initialize Tracker'''
-    deepsort = init_tracker()
+    cfg_deep = get_config()
+    cfg_deep.merge_from_file("deep_sort_pytorch/configs/deep_sort.yaml")
+
+    deepsort = DeepSort(cfg_deep.DEEPSORT.REID_CKPT,
+                            max_dist=cfg_deep.DEEPSORT.MAX_DIST, min_confidence=cfg_deep.DEEPSORT.MIN_CONFIDENCE,
+                            nms_max_overlap=cfg_deep.DEEPSORT.NMS_MAX_OVERLAP, max_iou_distance=cfg_deep.DEEPSORT.MAX_IOU_DISTANCE,
+                            max_age=cfg_deep.DEEPSORT.MAX_AGE, n_init=cfg_deep.DEEPSORT.N_INIT, nn_budget=cfg_deep.DEEPSORT.NN_BUDGET,
+                            use_cuda=True)
 
     '''Logging'''
     seg_logs={
@@ -475,8 +317,9 @@ def instance_segmentation(weights: str = 'yolov8.pt',
                             seg_logs['segmentation'][frame][player_id].append(player_entry)
 
                             # Draw Boxes on Image
+                            label = "player: " + str(identities)
                             r_bbox_xyxy = scale_coords(img.shape[2:], torch.Tensor([bbox_xyxy]), im0.shape, kpt_label=False).round()
-                            im0 = draw_boxes_tracked(im0, r_bbox_xyxy.cpu().numpy()[0], identities, categories, None, names, colors)
+                            plot_one_box(r_bbox_xyxy.cpu().numpy()[0], im0, colors[int(box.cls)], f'{label}')
                     
 
         '''Stream results'''
@@ -961,13 +804,11 @@ def detect_all(game_id: str = ''):
     # Instance Segmentation
     pose_db.create_database(game_id)
     pose_db.create_pose_table()
-    seg_logs = instance_segmentation(weights=instance_weights, source=videoPath, name='dominant_color_test', exist_ok=True)
+    seg_logs = instance_segmentation(weights=instance_weights, source=videoPath, dont_save=False)
     pose_db.close_db()
     writeToLog(dataLogFilePath, seg_logs)
 
 
 if __name__ == '__main__':
-    # extract_key_frames(dataset_folder='PhoneDatasetSeven', video_max_len = 10000)
-    detect_all(game_id='IMG_3050_Test')
-
-    
+    extract_key_frames(dataset_folder='PhoneDatasetSeven', video_max_len = 10000)
+    # detect_all(game_id='IMG_3050_Test')
