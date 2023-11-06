@@ -86,19 +86,23 @@ def instance_segmentation(weights: str = 'yolov8.pt',
 
     '''Directories'''
     save_dir = paths.video_inferred_path / weights_name
-    save_txt = paths.bbox_coordinates_path / weights_name
-    save_label = paths.labels_path / weights_name
+    save_txt_bbox = paths.bbox_coordinates_path / weights_name / "bbox"
+    save_txt_seg = paths.bbox_coordinates_path / weights_name / "segments"
+    save_label_bbox = paths.labels_path / weights_name / "bbox"
+    save_label_seg = paths.labels_path / weights_name / "segments"
 
     save_dir.mkdir(parents=True, exist_ok=True)  # create directory
-    save_txt.mkdir(parents=True, exist_ok=True)  # create directory
-    save_label.mkdir(parents=True, exist_ok=True)  # create directory
+    save_txt_bbox.mkdir(parents=True, exist_ok=True)  # create directory
+    save_txt_seg.mkdir(parents=True, exist_ok=True)  # create directory
+    save_label_bbox.mkdir(parents=True, exist_ok=True)  # create directory
+    save_label_seg.mkdir(parents=True, exist_ok=True)  # create directory
 
     '''Load model'''
     model = YOLO(weights)
 
     '''Initialize Tracker'''
     cfg_deep = get_config()
-    cfg_deep.merge_from_file("deep_sort_pytorch/configs/deep_sort.yaml")
+    cfg_deep.merge_from_file("deep_sort/configs/deep_sort.yaml")
 
     deepsort = DeepSort(cfg_deep.DEEPSORT.REID_CKPT,
                             max_dist=cfg_deep.DEEPSORT.MAX_DIST, min_confidence=cfg_deep.DEEPSORT.MIN_CONFIDENCE,
@@ -156,11 +160,15 @@ def instance_segmentation(weights: str = 'yolov8.pt',
         for i, det in enumerate(results):  # detections per image
             p = Path(p)  # to Path
             filename = (p.name.replace(" ", "_"))
-            save_label_video = Path(save_label / (filename.split('.')[0]))
-            save_label_video.mkdir(parents=True, exist_ok=True)  # make dir
-            label_per_frame = str(save_label_video / (str(frame) + '.txt'))
+            save_label_video_bbox = Path(save_label_bbox / (filename.split('.')[0]))
+            save_label_video_seg = Path(save_label_seg / (filename.split('.')[0]))
+            save_label_video_bbox.mkdir(parents=True, exist_ok=True)  # make dir
+            save_label_video_seg.mkdir(parents=True, exist_ok=True)  # make dir
+            label_per_frame_bbox = str(save_label_video_bbox / (str(frame) + '.txt'))
+            label_per_frame_seg = str(save_label_video_seg / (str(frame) + '.txt'))
             save_path = str(save_dir / (filename.split('.')[0] + "_actions_out" + ".mp4"))  # img.jpg
-            txt_path = str(save_txt / (filename.split('.')[0] + '.txt'))
+            txt_path_bbox = str(save_txt_bbox / (filename.split('.')[0] + '.txt'))
+            txt_path_seg = str(save_txt_seg / (filename.split('.')[0] + '.txt'))
 
             boxes = det.boxes  # Boxes object for bbox outputs
             masks = det.masks  # Masks object for segment masks outputs
@@ -168,21 +176,39 @@ def instance_segmentation(weights: str = 'yolov8.pt',
 
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
 
-            cv2.imwrite(str(save_label_video / (str(frame) + ".jpg")), image)
+            cv2.imwrite(str(save_label_video_bbox / (str(frame) + ".jpg")), image)
+            cv2.imwrite(str(save_label_video_seg / (str(frame) + ".jpg")), image)
 
             if masks is not None:
-                for box in boxes:
+                masks_xyn = det.masks.xyn
+                masks = masks.data.cpu()
+                for seg, seg_xyn, box in zip(masks, masks_xyn, boxes):
+                    segment = '\t'.join(map(str, seg_xyn.reshape(-1).tolist()))
+
+                    seg = seg.data.cpu().numpy()
+
+                    seg = cv2.resize(seg, (w, h))
+                    im0, colored_mask = overlay(im0, seg, colors[int(box.cls)], 0.4)
+
                     r_xyxy = scale_coords(img.shape[2:], box.xyxy.clone(), im0.shape, kpt_label=False).round()
-                    # xywh = box.xywhn.cpu().numpy()[0] # normalized 
                     xywh = (xyxy2xywh(torch.tensor(r_xyxy.cpu().numpy()[0]).view(1, 4)) / gn).view(-1).tolist()
                     xywh_label = ' '.join(map(str, ['%.5f' % elem for elem in xywh]))
+
                     xywh = '\t'.join(map(str, ['%.5f' % elem for elem in xywh]))
                     line = [str(frame), names[int(box.cls)], xywh, str(round(float(conf), 5))]
-                    with open(txt_path, 'a') as f:
+                    with open(txt_path_bbox, 'a') as f:
                         f.write(('\t'.join(line)) + '\n')
-                    label = [str(int(box.cls)), xywh_label]
+
+                    line = [str(frame), names[int(box.cls)], segment, str(round(float(conf), 5))]
+                    with open(txt_path_seg, 'a') as f:
+                        f.write(('\t'.join(line)) + '\n')
                     
-                    with open(label_per_frame, 'a') as f:
+                    label = [str(int(box.cls)), xywh_label]
+                    with open(label_per_frame_bbox, 'a') as f:
+                        f.write((' '.join(label)) + '\n')
+
+                    label = [str(int(box.cls)), segment]
+                    with open(label_per_frame_seg, 'a') as f:
                         f.write((' '.join(label)) + '\n')
                         
                     if save:  # Add bbox to image
@@ -203,14 +229,8 @@ def instance_segmentation(weights: str = 'yolov8.pt',
                     else:
                         position = "3_points"
 
-                if (color_det):
-                    masks = masks.data.cpu()
-                    for seg, box in zip(masks.data.cpu().numpy(), boxes):
+                    if (color_det):
                         # r_xywh = scale_coords(img.shape[2:], box.xywh.clone(), im0.shape, kpt_label=False).round()
-
-                        seg = cv2.resize(seg, (w, h))
-                        im0, colored_mask = overlay(im0, seg, colors[int(box.cls)], 0.4)
-
                         
                         # Find the dominant color. Default is 1 , pass the parameter 'number_of_colors=N' where N is the specified number of colors 
                         dominantColors = extractDominantColor(colored_mask,hasThresholding=True)
@@ -247,33 +267,33 @@ def instance_segmentation(weights: str = 'yolov8.pt',
                         elif delta_blue < delta_red:
                             player_id = 2
 
-                    pose_db.insert_into_pose_table(
-                        frame_num=frame,
-                        player_num= player_id,
-                        bbox_coords= box.xyxy.tolist(),
-                        feet_coords= [int(x_center_below), int(y_center_below)],
-                        position=position
-                    )
+                        pose_db.insert_into_pose_table(
+                            frame_num=frame,
+                            player_num= player_id,
+                            bbox_coords= box.xyxy.tolist(),
+                            feet_coords= [int(x_center_below), int(y_center_below)],
+                            position=position
+                        )
 
-                    if(player_id not in seg_logs['segmentation'][frame]):
-                        seg_logs['segmentation'][frame][player_id] = []
+                        if(player_id not in seg_logs['segmentation'][frame]):
+                            seg_logs['segmentation'][frame][player_id] = []
 
-                    # Add Tracked Person to Logs
-                    player_entry = {
-                        "player_id": str(player_id),
-                        "bbox_coords": box.xyxy.tolist(),
-                        "feet_coords": [int(x_center_below), int(y_center_below)],
-                        "position": position
-                    }
+                        # Add Tracked Person to Logs
+                        player_entry = {
+                            "player_id": str(player_id),
+                            "bbox_coords": box.xyxy.tolist(),
+                            "feet_coords": [int(x_center_below), int(y_center_below)],
+                            "position": position
+                        }
 
-                    seg_logs['segmentation'][frame][player_id].append(player_entry)
+                        seg_logs['segmentation'][frame][player_id].append(player_entry)
 
-                    label = "player: " + str(player_id)
-                    old_label = names[int(box.cls)]
+                        label = "player: " + str(player_id)
+                        old_label = names[int(box.cls)]
 
-                    plot_one_box(r_xyxy.cpu().numpy()[0], im0, colors[int(box.cls)], f'{label} {float(box.conf):.3}')
+                        plot_one_box(r_xyxy.cpu().numpy()[0], im0, colors[int(box.cls)], f'{label} {float(box.conf):.3}')
 
-                elif track:
+                if track:
                     xywh_bboxs = []
                     confs = []
                     oids = []
@@ -320,7 +340,6 @@ def instance_segmentation(weights: str = 'yolov8.pt',
                             label = "player: " + str(identities)
                             r_bbox_xyxy = scale_coords(img.shape[2:], torch.Tensor([bbox_xyxy]), im0.shape, kpt_label=False).round()
                             plot_one_box(r_bbox_xyxy.cpu().numpy()[0], im0, colors[int(box.cls)], f'{label}')
-                    
 
         '''Stream results'''
         if view_img:
@@ -777,38 +796,38 @@ def detect_all(game_id: str = ''):
     videoPath, dataLogFilePath = get_game_data(game_id=game_id)
     print(torch.cuda.is_available())
     torch.cuda.empty_cache()
-    # with torch.no_grad():
-    action_weights = 'weights/actions_2.pt'
-    basket_weights = 'weights/net_hoop_basket_combined_april.pt'
-    instance_weights = 'weights/yv8_person_seg.pt'
+    with torch.no_grad():
+        action_weights = 'weights/test_actions.pt'
+        basket_weights = 'weights/net_hoop_basket_combined_april.pt'
+        instance_weights = 'weights/yv8_person_seg.pt'
 
-    '''
-        Detect
-    '''
-    # Actions
-    action_db.create_database(game_id)
-    action_db.create_action_table()
-    actions_logs = detect_actions(weights=action_weights, source=videoPath, dont_save=False)
-    strip_optimizer(action_weights)
-    action_db.close_db()
-    writeToLog(dataLogFilePath, actions_logs)
+        '''
+            Detect
+        '''
+        # Actions
+        action_db.create_database(game_id)
+        action_db.create_action_table()
+        actions_logs = detect_actions(weights=action_weights, source=videoPath, dont_save=False)
+        strip_optimizer(action_weights)
+        action_db.close_db()
+        writeToLog(dataLogFilePath, actions_logs)
 
-    # Basketball
-    basket_db.create_database(game_id)
-    basket_db.create_basket_table()
-    basketball_logs = detect_basketball(weights=basket_weights, source=videoPath, dont_save=False)
-    strip_optimizer(basket_weights)
-    basket_db.close_db()
-    writeToLog(dataLogFilePath, basketball_logs)
+        # Basketball
+        basket_db.create_database(game_id)
+        basket_db.create_basket_table()
+        basketball_logs = detect_basketball(weights=basket_weights, source=videoPath, dont_save=False)
+        strip_optimizer(basket_weights)
+        basket_db.close_db()
+        writeToLog(dataLogFilePath, basketball_logs)
 
-    # Instance Segmentation
-    pose_db.create_database(game_id)
-    pose_db.create_pose_table()
-    seg_logs = instance_segmentation(weights=instance_weights, source=videoPath, dont_save=False)
-    pose_db.close_db()
-    writeToLog(dataLogFilePath, seg_logs)
+        # Instance Segmentation
+        pose_db.create_database(game_id)
+        pose_db.create_pose_table()
+        seg_logs = instance_segmentation(weights=instance_weights, source=videoPath, dont_save=False)
+        pose_db.close_db()
+        writeToLog(dataLogFilePath, seg_logs)
 
 
 if __name__ == '__main__':
-    extract_key_frames(dataset_folder='PhoneDatasetSeven', video_max_len = 10000)
-    # detect_all(game_id='IMG_3050_Test')
+    # extract_key_frames(dataset_folder='HardwareDatasetTwo', video_max_len = 10000)
+    detect_all(game_id='HardwareDatasetTwo_Frames')
