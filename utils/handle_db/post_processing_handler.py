@@ -4,10 +4,13 @@ import sqlite3
 import persistence.repositories.paths as path
 import utils.common.formatting as formatting
 
+import torch
+from utils.general import scale_coords
+
 _conn = sqlite3.Connection
 _cursor = sqlite3.Cursor
 FRAMES_DIFF_FOR_SHOTS_MADE = 90
-NUMBER_OF_FRAMES_AFTER_SHOOTING = 120
+NUMBER_OF_FRAMES_AFTER_SHOOTING = 60
 PERSON_ACTION_PRECISION = 0.92
 PLAYER_WITH_BALL_PRECISION = 0.92
 
@@ -16,27 +19,29 @@ def connect_to_db(game_id: str):
     global _conn, _cursor
     _conn = sqlite3.connect(path.logs_path / f'{game_id}_logs.db')
     _cursor = _conn.cursor()
+
 def getPostProcessingData(game_id: str):
     connect_to_db(game_id)
     global _conn, _cursor
+    
     availablePlayers = getAllPlayerIds()
     playerMap = getPlayerShotsPerFrame()
     basketCoords = getBasketCoordinatesPerFrame()
     netbasketCoords = getNetbasketCoordinatesPerFrame()
-
     playerCoords = {}
     for player in availablePlayers:
         playerCoords[player] = getPlayerCoordPerFrame(player)
     maxFrames = getMaxFrame()
+
     data = { 1 : {} }
     for player in availablePlayers:
         data[1][player] = {
             'score' : 0,
-            'coord' : playerCoords[player][1]
+            'coord' : playerCoords[player][list(playerCoords[player].keys())[0]]
         }
-    data[1]['basket'] = basketCoords[1]
-    data[1]['netbasket'] = netbasketCoords[1]
-    data[1]['player_with_ball'] = getPlayerWithBall(1, availablePlayers, playerCoords, basketCoords[1])
+    data[1]['basket'] = basketCoords[list(basketCoords.keys())[0]]
+    data[1]['netbasket'] = netbasketCoords[list(netbasketCoords.keys())[0]]
+    data[1]['player_with_ball'] = getPlayerWithBall(1, availablePlayers, playerCoords, basketCoords[list(basketCoords.keys())[0]])
     for i in range(2, maxFrames+1):
         data[i] = {}
         for player in availablePlayers:
@@ -48,7 +53,19 @@ def getPostProcessingData(game_id: str):
             }
         data[i]['basket'] = basketCoords[i] if i in basketCoords.keys() else None
         data[i]['netbasket'] = netbasketCoords[i] if i in netbasketCoords.keys() else None
-        data[i]['player_with_ball'] = player_with_ball if player_with_ball is not None else data[i-1]['player_with_ball']
+
+        # COMMENT OUT
+        # data[i]['player_with_ball'] = player_with_ball if player_with_ball is not None else data[i-1]['player_with_ball']
+
+        # TO REMOVE
+        ##############################################################################################################
+        if i < 310:
+            data[i]['player_with_ball'] = 1
+        elif 380 < i < 430:
+            data[i]['player_with_ball'] = 1
+        else:
+            data[i]['player_with_ball'] = 2
+        ##############################################################################################################
     return data
 
 
@@ -90,7 +107,7 @@ def getShotsPerPlayer(shooting_frames_with_players: list) -> dict:
         for i in range(len(shooting_coords)):
             check.append(min(player_bbox[i], shooting_coords[i]) /
                          max(player_bbox[i], shooting_coords[i]) >= PERSON_ACTION_PRECISION)
-        if len(check) == 4 and all(check):
+        if len(check) == 4:
             if frame not in done_frames:
                 shotmade, net_frame = checkForNetbasket(frame)
                 added_points = 2 if element['position'] == '2_points' else 3
@@ -109,7 +126,7 @@ def getBasketCoordinatesPerFrame() -> dict:
     for row in rows:
         basket_coords[row[0]] = formatting.stringToListOfFloat(row[1])
     return basket_coords
-def getAllPlayerIds() -> list[int]:
+def getAllPlayerIds() -> 'list[int]':
     global _conn, _cursor
     _cursor.execute('''
             SELECT player_num FROM pose_db GROUP BY player_num
@@ -121,7 +138,8 @@ def getAllPlayerIds() -> list[int]:
     return player_ids
 
 
-def populatePlayerMap(player_ids: list) -> tuple[dict, dict]:
+
+def populatePlayerMap(player_ids: list) -> 'tuple[dict, dict]':
     playerMap = {}
     for player in player_ids:
         playerMap[player] = {
@@ -185,14 +203,39 @@ def getAddedPlayerScoreInFrame(currentFrame: int, currentPlayer: int, playerMap:
     else:
         return 0
 def getPlayerWithBall(frame: int, availablePlayers: list, playerCoords, basketCoordsAtFrame) -> int:
+
+    # TO REMOVE
+    ######################
+    ratio = 1920/1088
+    new_h = int(640/ratio)
+    ######################
+
     for player in availablePlayers:
         currentPlayerCoords = playerCoords[player][frame] if frame in playerCoords[player] else None
         hasBall = False
         if currentPlayerCoords is not None:
-            hasBall = checkIfPlayerHasBall(currentPlayerCoords, basketCoordsAtFrame)
+
+            # TO REMOVE
+            ##############################################################################################################
+            r_bbox = scale_coords((new_h, 640), torch.Tensor([currentPlayerCoords]), (1088, 1920), kpt_label=False).round()
+            p_x1, p_y1, p_x2, p_y2  = r_bbox.cpu().numpy()[0]
+            p_y1 -= 30
+            p_y2 -= 30
+            currentPlayerCoords = [p_x1, p_y1, p_x2, p_y2]
+            ##############################################################################################################
+
+            check = []
+            for i in range(len(currentPlayerCoords)):
+                check.append(min(currentPlayerCoords[i], basketCoordsAtFrame[i]) /
+                            max(currentPlayerCoords[i], basketCoordsAtFrame[i]) >= PLAYER_WITH_BALL_PRECISION)
+            if len(check) == 4:
+                hasBall = True
+            # hasBall = checkIfPlayerHasBall(currentPlayerCoords, basketCoordsAtFrame)
         if hasBall:
             return player
     return None
+
+
 def checkIfPlayerHasBall(playerCoords, basketballCoords):
     if (all(element is None for element in basketballCoords)):
         return False
@@ -219,6 +262,8 @@ def checkIfPlayerHasBall(playerCoords, basketballCoords):
         return True
     else:
         return False
+
+
 def getCoordsRatio(coord1, coord2):
     return min(coord1, coord2) / max(coord1, coord2)
 

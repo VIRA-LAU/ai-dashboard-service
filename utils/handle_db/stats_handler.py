@@ -28,7 +28,8 @@ def getAPIStats(game_id: str, team1: list, team2: list) -> dict:
             'points' : getTotalPerTeam(team2_player_points)
         }
     }
-def getNetbasketCoordinatesFrames(game_id: str) -> list[list, int]:
+
+def getNetbasketCoordinatesFrames(game_id: str) -> 'list[list, int]':
     global _conn, _cursor
     connect_to_db(game_id)
     _cursor.execute('''
@@ -40,7 +41,8 @@ def getNetbasketCoordinatesFrames(game_id: str) -> list[list, int]:
         if len(frames_netbasket) == 0 or row[0] - frames_netbasket[-1] >= 60:
             frames_netbasket.append(row[0])
     return [frames_netbasket, len(frames_netbasket)]
-def getShotsPerTeam(team1: list, team2: list) -> tuple[dict, dict]:
+
+def getShotsPerTeam(team1: list, team2: list) -> 'tuple[dict, dict]':
     global _conn, _cursor
     _cursor.execute('''
         SELECT shots.frame_num, player_num, pose_db.bbox_coords,
@@ -64,8 +66,7 @@ def getShotsPerTeam(team1: list, team2: list) -> tuple[dict, dict]:
             frames_added.append(row[0])
     return getShotsPerPlayer(shooting_frames_with_players, team1, team2)
 
-
-def getShotsPerPlayer(shooting_frames_with_players: list, team1: list, team2: list) -> tuple[dict, dict]:
+def getShotsPerPlayer(shooting_frames_with_players: list, team1: list, team2: list) -> 'tuple[dict, dict]':
     player_ids = getAllPlayerIds()
     team1_player_scores, team2_player_scores = populateTeamLists(player_ids, team1, team2)
     done_frames = []
@@ -93,7 +94,7 @@ def getShotsPerPlayer(shooting_frames_with_players: list, team1: list, team2: li
                 done_frames.append(frame)
     return team1_player_scores, team2_player_scores
 
-def getAllPlayerIds() -> list[int]:
+def getAllPlayerIds() -> 'list[int]':
     global _conn, _cursor
     _cursor.execute('''
             SELECT player_num FROM pose_db GROUP BY player_num
@@ -104,8 +105,7 @@ def getAllPlayerIds() -> list[int]:
         player_ids.append(row[0])
     return player_ids
 
-
-def populateTeamLists(player_ids: list, team1: list, team2: list) -> tuple[dict, dict]:
+def populateTeamLists(player_ids: list, team1: list, team2: list) -> 'tuple[dict, dict]':
     team1_player_scores = {}
     team2_player_scores = {}
     for player in player_ids:
@@ -138,7 +138,16 @@ def getTotalPerTeam(shotsPerTeam: dict):
     for player in shotsPerTeam.keys():
         total += shotsPerTeam[player]['scored']
     return total
-# def getPossession():
+
+# TODO: Use from getsats for the sake of Demonstration
+# 2points count
+# 3points count
+# shots accuracy
+# possession
+# passes
+# assists
+
+
 def getPlayersAndBasket():
     global _conn, _cursor
     table = _cursor.execute('''
@@ -149,7 +158,6 @@ def getPlayersAndBasket():
     ''')
     rows = _cursor.fetchall()
     print(rows)
-
 
 if __name__ == '__main__':
     #print(getAPIStats('04181', [1], [2]))

@@ -797,8 +797,8 @@ def detect_all(game_id: str = ''):
     print(torch.cuda.is_available())
     torch.cuda.empty_cache()
     with torch.no_grad():
-        action_weights = 'weights/test_actions.pt'
-        basket_weights = 'weights/net_hoop_basket_combined_april.pt'
+        action_weights = 'weights/actions_3_5.pt'
+        basket_weights = 'weights/netbasket_3_5.pt'
         instance_weights = 'weights/yv8_person_seg.pt'
 
         '''
@@ -829,5 +829,7 @@ def detect_all(game_id: str = ''):
 
 
 if __name__ == '__main__':
-    # extract_key_frames(dataset_folder='HardwareDatasetTwo', video_max_len = 10000)
-    detect_all(game_id='HardwareDatasetTwo_Frames')
+    # extract_key_frames(dataset_folder='F1', video_max_len = 10000)
+    # extract_key_frames(dataset_folder='F2', video_max_len = 10000)
+    detect_all(game_id='IMG_3050_Demo')
+    # TO FIX: Write the rescaled bounding boxes of person (and possibly action) to the db file

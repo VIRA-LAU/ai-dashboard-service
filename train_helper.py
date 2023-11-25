@@ -152,7 +152,7 @@ def run_auto_annotator_segmentation():
 
 
 def run_train_segmentation():
-    train_segmentation(weights='weights/yolov8n-seg.pt', data='datasets/training_datasets/instance_segmentation/PhoneDatasetThree/data.yaml')
+    train_segmentation(weights='weights/yv8_person_seg.pt', data='datasets/training_datasets/instance_segmentation/PhoneDatasetThree_seg/data.yaml')
     return
 
 
@@ -161,14 +161,16 @@ if __name__ == "__main__":
 
     '''Weights Location'''
     actions_weight = 'weights/actions_2.pt'
-    netbasket_weights = 'weights/net_hoop_basket_combined_april.pt'
+    netbasket_weight = 'weights/net_hoop_basket_combined_april.pt'
 
     '''Dataset Location'''
-    actions_dataset_path = 'datasets/training_datasets/object_detection/actions/PhoneDatasetThree/data.yaml'
-    netbasket_dataset_path = 'datasets/training_datasets/object_detection/netbasket/PhoneDatasetThree/data.yaml'
+    actions_dataset_path = 'datasets/training_datasets/object_detection/PhoneDatasetThree_actions/data.yaml'
+    netbasket_dataset_path = 'datasets/training_datasets/object_detection/PhoneDatasetThree_netbasket/data.yaml'
 
     '''Hyperparameters Location'''
-    test_hyp = 'train/cfg/object_detection/hyperparameters/hyp_learning_rate.yaml'
-    run_train_detection(weights=actions_weight, device='0', data=actions_dataset_path, evolve=False, generations=30, epochs=150, batch_size=8, name='learning_rate_training_test', exist_ok=True, hyp=test_hyp)
-    # run_auto_annotator_segmentation()
+    hyp = 'train/cfg/object_detection/hyperparameters/hyp.scratch.p6.yaml'
+
+    '''Run Training'''
+    run_train_detection(weights=actions_weight, device='0', data=actions_dataset_path, evolve=False, generations=30, epochs=100, batch_size=8, name='actions_train_nov_6', exist_ok=True, hyp=hyp)
+    # run_train_detection(weights=netbasket_weight, device='0', data=netbasket_dataset_path, evolve=False, generations=30, epochs=100, batch_size=8, name='netbasket_train_nov_6', exist_ok=True, hyp=hyp)
     # run_train_segmentation()

@@ -11,6 +11,9 @@ from utils.paths.game import get_game_data
 from utils.handle_db.post_processing_handler import getPostProcessingData
 import persistence.repositories.paths as paths
 
+import torch
+from utils.general import scale_coords
+
 '''
     Individual Stats
 '''
@@ -20,14 +23,23 @@ def process_video(game_id: str):
     data = getPostProcessingData(game_id)
     video = cv2.VideoCapture(video_path)
     framerate = math.ceil(video.get(cv2.CAP_PROP_FPS))
+    width  = int(video.get(cv2.CAP_PROP_FRAME_WIDTH) )  
+    height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
     os.makedirs(os.path.join(paths.post_process_path), exist_ok=True)
     output = cv2.VideoWriter(
-        str(paths.post_process_path / f'{game_id}.mp4'), cv2.VideoWriter_fourcc(*'mp4v'), framerate, (1920, 1080))
-    
+        str(paths.post_process_path / f'{game_id}.mp4'), cv2.VideoWriter_fourcc(*'mp4v'), framerate, (width, height))
+
+    # TO REMOVE
+    ######################
+    ratio = width/height
+    new_h = int(640/ratio)
+    ######################
+
     while(True):
         ret, frame = video.read()
         frame_num = int(video.get(cv2.CAP_PROP_POS_FRAMES))
         if(ret):
+            # frame = cv2.resize(frame, (1920,1080)) # resize frame to write as a new custom frame size
             tl = round(0.002 * (frame.shape[0] + frame.shape[1]) / 2) + 1
             tf = max(tl - 3, 1)
             if data[(frame_num)] is not None:
@@ -37,6 +49,16 @@ def process_video(game_id: str):
                 if player_with_ball is not None:
                     if data[frame_num][player_with_ball]['coord'] is not None:
                         p_x1, p_y1, p_x2, p_y2 = data[frame_num][player_with_ball]['coord']
+
+                        # TO REMOVE
+                        ###################################################################################################################
+                        r_bbox = scale_coords((new_h, 640), torch.Tensor([[p_x1, p_y1, p_x2, p_y2]]), frame.shape, kpt_label=False).round()
+                        # print(r_bbox)
+                        p_x1, p_y1, p_x2, p_y2  = r_bbox.cpu().numpy()[0]
+                        p_y1 -= 30
+                        p_y2 -= 30
+                        ###################################################################################################################
+
                         cv2.rectangle(frame, (int(p_x1), int(p_y1)), (int(p_x2), int(p_y2)), (53, 103, 240), tl)
 
                         # Text

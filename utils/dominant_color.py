@@ -83,8 +83,8 @@ def extractDominantColor(image,number_of_colors=5,hasThresholding=False):
     # Reshape Image
     img = img.reshape((img.shape[0]*img.shape[1]) , 3)
     #Initiate KMeans Object
-    # estimator = KMeans(n_clusters=number_of_colors, random_state=0)
-    estimator = FaissKMeans(n_clusters=number_of_colors)
+    estimator = KMeans(n_clusters=number_of_colors, random_state=0)
+    # estimator = FaissKMeans(n_clusters=number_of_colors)
     # Fit the image
     estimator.fit(img)
     # Get Colour Information
