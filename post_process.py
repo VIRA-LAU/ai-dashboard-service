@@ -6,9 +6,7 @@ import numpy as np
 import cv2
 import os
 from getstats import *
-from shared.helper.json_helpers import parse_json
 from utils.paths.game import get_game_data
-from utils.handle_db.post_processing_handler import getPostProcessingData
 import persistence.repositories.paths as paths
 
 import torch
@@ -18,9 +16,8 @@ from utils.general import scale_coords
     Individual Stats
 '''
 
-def process_video(game_id: str):
+def process_video(game_id: str, data: dict = {}):
     video_path = get_game_data(game_id)[0]
-    data = getPostProcessingData(game_id)
     video = cv2.VideoCapture(video_path)
     framerate = math.ceil(video.get(cv2.CAP_PROP_FPS))
     width  = int(video.get(cv2.CAP_PROP_FRAME_WIDTH) )  
@@ -43,12 +40,12 @@ def process_video(game_id: str):
             tl = round(0.002 * (frame.shape[0] + frame.shape[1]) / 2) + 1
             tf = max(tl - 3, 1)
             if data[(frame_num)] is not None:
-                player_with_ball = data[frame_num]['player_with_ball']
+                player_with_ball = data[frame_num]['player_with_ball']['player']
                 label = None
 
                 if player_with_ball is not None:
-                    if data[frame_num][player_with_ball]['coord'] is not None:
-                        p_x1, p_y1, p_x2, p_y2 = data[frame_num][player_with_ball]['coord']
+                    if data[frame_num]['players'][player_with_ball]['coord'] is not None:
+                        p_x1, p_y1, p_x2, p_y2 = data[frame_num]['players'][player_with_ball]['coord']
 
                         # TO REMOVE
                         ###################################################################################################################
@@ -62,7 +59,7 @@ def process_video(game_id: str):
                         cv2.rectangle(frame, (int(p_x1), int(p_y1)), (int(p_x2), int(p_y2)), (53, 103, 240), tl)
 
                         # Text
-                        label = 'player ' + str(player_with_ball) + ': points: ' + str(data[frame_num][player_with_ball]['score'])
+                        label = 'player ' + str(player_with_ball) + ': points: ' + str(data[frame_num]['players'][player_with_ball]['score'])
                         t_size = cv2.getTextSize(label, 0, fontScale=tl / 3, thickness=tf)[0]
                         c2 =  int(p_x1) + t_size[0]-180, int(p_y1) - t_size[1] - 3
                         cv2.rectangle(frame, (int(p_x1), int(p_y1)), c2, (42, 43, 42), -1, cv2.LINE_AA)
@@ -90,15 +87,3 @@ def process_video(game_id: str):
     video.release()
 
     return output
-
-
-if __name__ == "__main__":
-    '''
-        Video, Logs
-    '''
-    # video_dir = 'datasets/videos_input/04181.mp4'
-    # data_path = 'datasets/logs/data.json'
-    # data = parse_json(data_path)
-
-    process_video('04181')
-

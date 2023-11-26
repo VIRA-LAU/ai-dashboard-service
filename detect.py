@@ -14,7 +14,7 @@ from models.experimental import attempt_load
 from utils.paths.game import get_game_data
 from persistence.repositories import paths
 from utils.datasets import LoadImages
-from utils.general import strip_optimizer, set_logging, non_max_suppression, non_max_suppression_kpt, scale_coords, xyxy2xywh, check_img_size
+from utils.general import strip_optimizer, set_logging, non_max_suppression, scale_coords, xyxy2xywh, check_img_size
 from utils.torch_utils import time_synchronized, select_device, TracedModel
 import utils.handle_db.action_db_handler as action_db
 import utils.handle_db.basket_db_handler as basket_db
@@ -22,7 +22,7 @@ import utils.handle_db.pose_db_handler as pose_db
 
 from utils.args import *
 from utils.frame_extraction import extract_frames
-from utils.dominant_color import extractDominantColor, prety_print_data, plotColorBar
+from utils.dominant_color import extractDominantColor
 from utils.segmentation import overlay
 from utils.plots import plot_one_box
 

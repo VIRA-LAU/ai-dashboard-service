@@ -1,0 +1,29 @@
+{
+    "team_1": 
+    {
+        "players": 
+        {
+            "1": 
+            {
+                "scorePerFrame": {"1": 0, "208": 3}, "2points": 0, "3points": 1, "shotsmade": 1, "shotsmissed": 0, "shots_accuracy": 100
+            }
+        }, 
+        "points": 3, 
+        "possession": 67
+    }, 
+    "team_2": 
+    {
+        "players": 
+        {
+            "2": 
+            {
+                "scorePerFrame": {"1": 0, "515": 2}, "2points": 1, "3points": 0, "shotsmade": 1, "shotsmissed": 0, "shots_accuracy": 100
+            }
+        }, 
+        "points": 2, 
+        "possession": 33
+    }, 
+    "total_passes": 3, 
+    "total_assists": 1
+}
+
