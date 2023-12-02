@@ -5,7 +5,6 @@ import numpy as np
 
 import cv2
 import os
-from getstats import *
 from utils.paths.game import get_game_data
 import persistence.repositories.paths as paths
 

@@ -12,11 +12,10 @@ import application.service.lock_handler.lock_service as lock_service
 from core.song_player import give_song
 from core.video_concat import video_concat
 from core.video_splitter import video_splitter
-from detect import detect_all
+from detect_helper import detect_all
 from utils.aws.delete_downloaded_video import delete_downloaded_video
 from utils.aws.download_hosted_video import download_video
 from utils.aws.upload_detected_video import upload_highlights_to_s3
-from getstats import getsShots
 from utils.handle_db.stats_db_handler import Stats_DB_Handler
 from post_process import process_video
 import persistence.repositories.paths as paths

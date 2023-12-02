@@ -1,7 +1,7 @@
 import requests
 from fastapi import APIRouter, UploadFile, File, BackgroundTasks
 
-import detect
+import detect_helper
 from containers import Services
 from core.song_player import give_song
 from core.video_splitter import video_splitter
