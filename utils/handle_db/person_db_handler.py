@@ -45,6 +45,16 @@ def insert_into_person_table(
                      json.dumps(feet_coords), position, action, player_with_basketball))
     _conn.commit()
 
+def update_person_pwb_table(
+        frame_num: int,
+        player_num: int,
+        player_with_basketball: str
+):
+    global _conn, _cursor
+    _cursor.execute("UPDATE person_db SET player_with_basketball = (?) WHERE frame_num = (?) AND player_num = (?)",
+                    (player_with_basketball, frame_num, player_num))
+    _conn.commit()
+
 
 def close_db():
     global _conn

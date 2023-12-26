@@ -6,16 +6,12 @@ import numpy as np
 import torch
 import cv2
 
-from models.experimental import attempt_load
-
 from utils.datasets import LoadImages
 from utils.general import set_logging, scale_coords
 from utils.torch_utils import select_device
 from utils.plots import plot_one_box
 from utils.inference_utils import init_detection_model,\
     unsqueeze_image, warmup, make_inference_directories, save_inference_directories, write_bbox, write_video
-
-from persistence.repositories import paths
 
 import utils.handle_db.basket_db_handler as basket_db
 
@@ -24,7 +20,7 @@ def detect_basketball(weights: str = 'yolov7.pt',
            img_size: int = 640,
            conf_thresh: float = 0.6,
            iou_thresh: float = 0.45,
-           device: str = '',
+           device: str = "0",
            view_img: bool = False,
            dont_save: bool = False,
            augment: bool = False) -> tuple:

@@ -27,8 +27,8 @@ class DetectionService:
         return
 
     def run_inference(self, game_id: str) -> tuple[dict, str, str, str, str, int]:
-        download_video(game_id)
-        self.infer_detection(game_id)
+        # download_video(game_id)
+        # self.infer_detection(game_id)
         game_db_stats = Stats_DB_Handler(game_id, [1], [2])
         process_video(game_id, game_db_stats.post_process_data)
         frames_point_scored, shotsmade = game_db_stats.getNetbasketCoordinatesFrames()
@@ -43,12 +43,12 @@ class DetectionService:
             concatenated_with_music = give_song(game_id=game_id, video_clip=video, duration=int(video.duration),
                                                 filename=filename)
 
-        upload_highlights_to_s3(game_id)
-        delete_downloaded_video(game_id)
-        requests.patch(
-            url=f'http://ec2-16-170-232-235.eu-north-1.compute.amazonaws.com:3000/ai/video_processed/{game_id}',
-            data=json.dumps(stats),
-            headers= {'Content-Type': 'application/json'}
-        )
-        lock_service.LockService().deleteLockFile(game_id)
+        # upload_highlights_to_s3(game_id)
+        # delete_downloaded_video(game_id)
+        # requests.patch(
+        #     url=f'http://ec2-16-170-232-235.eu-north-1.compute.amazonaws.com:3000/ai/video_processed/{game_id}',
+        #     data=json.dumps(stats),
+        #     headers= {'Content-Type': 'application/json'}
+        # )
+        # lock_service.LockService().deleteLockFile(game_id)
         return stats, video_inferred_path, videos_paths, concatenated, concatenated_with_music, shotsmade

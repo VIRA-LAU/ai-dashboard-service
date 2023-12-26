@@ -11,7 +11,8 @@ import cv2
 from ultralytics import YOLO
 
 from utils.datasets import LoadImages
-from utils.general import scale_coords, non_max_suppression
+from utils.general import set_logging, scale_coords, non_max_suppression, custom_non_max_suppression
+from utils.torch_utils import select_device
 from utils.segmentation import overlay
 from utils.plots import plot_one_box
 from utils.inference_utils import init_detection_model, init_segmentation_model, unsqueeze_image,\
@@ -34,7 +35,7 @@ def detect_person(weights: str = 'yolov8.pt',
                         conf: float=0.6,
                         iou: float=0.45,
                         img_size: int=640,
-                        device= torch.device("cuda:0"),
+                        device= "0",
                         half: bool=True,
                         dont_save: bool=True,
                         save_dir: str = 'datasets/videos_inferred',
@@ -49,10 +50,15 @@ def detect_person(weights: str = 'yolov8.pt',
     '''Directories'''
     save_dir, save_txt_bbox, save_label_bbox, save_txt_seg, save_label_seg = make_inference_directories(weights_name, segmentation=True)
 
-    '''Initialize model'''
+    '''Initialize'''
+    set_logging()
+    device = select_device(device)
+    half = device.type != 'cpu'  # half precision only supported on CUDA
+
+    '''Load Models'''
     model, names, colors = init_segmentation_model(weights)
-    action_model, action_names, action_colors = init_detection_model(actions_weights)
-    pwb_model, pwb_names, pwb_colors = init_detection_model(pwb_weights)
+    # action_model, _, _, action_names, action_colors = init_detection_model(action_weights, half, device, img_size)
+    pwb_model, _, _, pwb_names, pwb_colors = init_detection_model(pwb_weights, half, device, img_size)
 
     '''Initialize Tracker'''
     cfg_deep = get_config()
@@ -164,6 +170,8 @@ def detect_person(weights: str = 'yolov8.pt',
                     outputs = deepsort.update(xywhs, confss, oids, im0)
 
                     if len(outputs) > 0:
+                        track_entry = []
+                        max_conf = 0
                         for track_det in outputs:
                             '''Track ID'''
                             class_name = "person"
@@ -172,31 +180,77 @@ def detect_person(weights: str = 'yolov8.pt',
                             object_id = track_det[-1]
                             categories = class_name
 
+                            r_bbox_xyxy = scale_coords(img.shape[2:], torch.Tensor([bbox_xyxy]), im0.shape, kpt_label=False).round()
+
                             '''ROI'''
+                            # box_x1, box_y1, box_x2, box_y2 = r_bbox_xyxy.cpu().numpy()[0]
                             box_x1, box_y1, box_x2, box_y2 = bbox_xyxy
-                            roi = img[box_y1:box_y2, box_x1:box_x2]
+                            roi = im0[int(box_y1)-50:int(box_y2)+50, int(box_x1)-50:int(box_x2)+50]
+                            roi_height, roi_width, channels = roi.shape
+                            roi_height = min(roi_height, 384)
+                            roi_width = min(roi_width, 640)
+                            roi = roi[0:roi_height, 0:roi_width]
+
+                            # Padding
+                            roi_padded = np.zeros([384, 640, 3], dtype=np.uint8)
+                            roi_padded[0:roi_height, 0:roi_width] = roi
+                            roi_padded = roi_padded.transpose((2, 0, 1))
+
+                            frame_roi_tensor = unsqueeze_image(roi_padded, device, half)
 
                             '''Player with Basketball Model'''
-                            pwb_label = detect_pwb(pwb_model, pwb_names, pwb_colors, roi, conf, iou, True)
+                            pwb_label, pwb_conf = detect_pwb(pwb_model, pwb_names, pwb_colors, frame_roi_tensor, 0.1, 0.8, True)
+                            if pwb_label == None:
+                                pwb_label = ''
+
+                            if pwb_conf is not None:
+                                if pwb_conf.item() > max_conf:
+                                    max_conf = pwb_conf.item()
 
                             '''New Actions Model'''
-                            action_label = detect_action(action_model, action_names, action_colors, roi, conf, iou, True)
-
-                            '''Write to DB'''
-                            r_bbox_xyxy = scale_coords(img.shape[2:], torch.Tensor([bbox_xyxy]), im0.shape, kpt_label=False).round()
-                            person_db.insert_into_person_table(
-                                frame_num=frame,
-                                player_num= int(identities),
-                                bbox_coords= r_bbox_xyxy.tolist(),
-                                feet_coords= [int(x_center_below), int(y_center_below)],
-                                position= position,
-                                action = action_label,
-                                player_with_basketball = pwb_label
-                            )
+                            # action_label = detect_action(action_model, action_names, action_colors, roi, conf, iou, True)
+                            action_label = 'action'
 
                             # Draw Boxes on Image
                             label = "player: " + str(identities)
                             plot_one_box(r_bbox_xyxy.cpu().numpy()[0], im0, colors[int(box.cls)], f'{label}')
+
+                            '''Add tracked player to list entry to compare conf with other tracked players'''
+                            entry = {
+                                'player_num': int(identities),
+                                'bbox_coords': r_bbox_xyxy.tolist(),
+                                'feet_coords': [int(x_center_below), int(y_center_below)],
+                                'position': position,
+                                'action': action_label,
+                                'player_with_basketball': pwb_label,
+                                'conf': pwb_conf.item() if pwb_conf is not None else 0.0
+                            }
+
+                            track_entry.append(entry)
+
+                        '''Write to DB'''
+                        '''Get player with basketball wit highest confidence'''
+                        for entry in track_entry:
+                            if entry['conf'] < max_conf:
+                                person_db.insert_into_person_table(
+                                    frame_num=frame,
+                                    player_num= entry['player_num'],
+                                    bbox_coords= entry['bbox_coords'],
+                                    feet_coords= entry['feet_coords'],
+                                    position= entry['position'],
+                                    action = entry['action'],
+                                    player_with_basketball = ''
+                                )
+                            else:
+                                person_db.insert_into_person_table(
+                                    frame_num=frame,
+                                    player_num= entry['player_num'],
+                                    bbox_coords= entry['bbox_coords'],
+                                    feet_coords= entry['feet_coords'],
+                                    position= entry['position'],
+                                    action = entry['action'],
+                                    player_with_basketball = entry['player_with_basketball']
+                                )
 
         '''Stream results'''
         if view_img:
@@ -212,43 +266,14 @@ def detect_person(weights: str = 'yolov8.pt',
             vid_writer.write(im0)
 
 
-def detect_action(model, names, colors, img, conf_thresh, iou_thresh, augment):
-    pred = model(img, augment=augment)[0]
-    pred = non_max_suppression(pred, conf_thresh, iou_thresh)
-
-    for i, det in enumerate(pred):
-        gn = torch.tensor(img.shape)[[1, 0, 1, 0]]
-        if len(det):
-            '''Rescale boxes from img_size to im0 size'''
-            # det[:, :4] = scale_coords(img.shape[2:], det[:, :4], img.shape, kpt_label=False).round()
-
-            '''Print results'''
-            for c in det[:, -1].unique():
-                n = (det[:, -1] == c).sum()  # detections per class
-                s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
-    
-            for *xyxy, conf, cls in reversed(det):
-                label = names[int(cls)]
-
-    return label
-
-
 def detect_pwb(model, names, colors, img, conf_thresh, iou_thresh, augment):
     pred = model(img, augment=augment)[0]
-    pred = non_max_suppression(pred, conf_thresh, iou_thresh)
+    pred = custom_non_max_suppression(pred, conf_thresh, iou_thresh, merge=False)
 
     for i, det in enumerate(pred):
-        gn = torch.tensor(img.shape)[[1, 0, 1, 0]]
         if len(det):
-            '''Rescale boxes from img_size to im0 size'''
-            # det[:, :4] = scale_coords(img.shape[2:], det[:, :4], img.shape, kpt_label=False).round()
-
-            '''Print results'''
-            for c in det[:, -1].unique():
-                n = (det[:, -1] == c).sum()  # detections per class
-                s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
-    
             for *xyxy, conf, cls in reversed(det):
                 label = names[int(cls)]
-
-    return label
+                if label == 'basketball':
+                    return label, conf
+    return None, None

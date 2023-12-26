@@ -4,6 +4,8 @@
 *.avi
 env/
 
+wandb/
+
 traced_model.pt
 
 datasets/*
@@ -23,7 +25,7 @@ utils/TubeDETR/models/checkpoints/*
 !utils/TubeDETR/models/checkpoints/.gitkeep
 
 weights/*
-runs/*
+runs/
 
 yolov8n.pt
 sam_b.pt

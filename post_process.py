@@ -16,7 +16,7 @@ from utils.general import scale_coords
 '''
 
 def process_video(game_id: str, data: dict = {}):
-    video_path = get_game_data(game_id)[0]
+    video_path = get_game_data(game_id)
     video = cv2.VideoCapture(video_path)
     framerate = math.ceil(video.get(cv2.CAP_PROP_FPS))
     width  = int(video.get(cv2.CAP_PROP_FRAME_WIDTH) )  
@@ -24,7 +24,7 @@ def process_video(game_id: str, data: dict = {}):
     os.makedirs(os.path.join(paths.post_process_path), exist_ok=True)
     output = cv2.VideoWriter(
         str(paths.post_process_path / f'{game_id}.mp4'), cv2.VideoWriter_fourcc(*'mp4v'), framerate, (width, height))
-
+    
     # TO REMOVE
     ######################
     ratio = width/height
@@ -38,7 +38,7 @@ def process_video(game_id: str, data: dict = {}):
             # frame = cv2.resize(frame, (1920,1080)) # resize frame to write as a new custom frame size
             tl = round(0.002 * (frame.shape[0] + frame.shape[1]) / 2) + 1
             tf = max(tl - 3, 1)
-            if data[(frame_num)] is not None:
+            if frame_num in data:
                 player_with_ball = data[frame_num]['player_with_ball']['player']
                 label = None
 
@@ -48,11 +48,11 @@ def process_video(game_id: str, data: dict = {}):
 
                         # TO REMOVE
                         ###################################################################################################################
-                        r_bbox = scale_coords((new_h, 640), torch.Tensor([[p_x1, p_y1, p_x2, p_y2]]), frame.shape, kpt_label=False).round()
-                        # print(r_bbox)
-                        p_x1, p_y1, p_x2, p_y2  = r_bbox.cpu().numpy()[0]
-                        p_y1 -= 30
-                        p_y2 -= 30
+                        # r_bbox = scale_coords((new_h, 640), torch.Tensor([[p_x1, p_y1, p_x2, p_y2]]), frame.shape, kpt_label=False).round()
+                        # # print(r_bbox)
+                        # p_x1, p_y1, p_x2, p_y2  = r_bbox.cpu().numpy()[0]
+                        # p_y1 -= 30
+                        # p_y2 -= 30
                         ###################################################################################################################
 
                         cv2.rectangle(frame, (int(p_x1), int(p_y1)), (int(p_x2), int(p_y2)), (53, 103, 240), tl)

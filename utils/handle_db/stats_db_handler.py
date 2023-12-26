@@ -84,14 +84,14 @@ class Stats_DB_Handler:
 
             # TO REMOVE
             ##############################################################################################################
-            if i < 310:
+            if i < 400:
                 data[i]['player_with_ball'] = {
                     'player': 1,
                     'team': 'team_1'
                 }
-            elif 380 < i < 430:
+            elif 400 < i < 460:
                 data[i]['player_with_ball'] = {
-                    'player': 1,
+                    'player': 2,
                     'team': 'team_1'
                 }
             else:
@@ -105,11 +105,11 @@ class Stats_DB_Handler:
 
     def getPlayerShotsPerFrame(self) -> dict:
         self._cursor.execute('''
-            SELECT shots.frame_num, player_num, pose_db.bbox_coords,
+            SELECT shots.frame_num, player_num, person_db.bbox_coords,
             shots.bbox_coords, position FROM (SELECT frame_num,
             bbox_coords, ROW_NUMBER() OVER (ORDER BY frame_num)
             AS row_number from action_db where action = 'shooting')
-            as shots JOIN pose_db ON shots.frame_num = pose_db.frame_num
+            as shots JOIN person_db ON shots.frame_num = person_db.frame_num
         ''')
         rows = self._cursor.fetchall()
         shooting_frames_with_players = []
@@ -119,8 +119,8 @@ class Stats_DB_Handler:
                 shooting_frames_with_players.append({
                     'frame': row[0],
                     'player_num': row[1],
-                    'pose_coords': formatting.stringToListOfFloat(row[2]),
-                    'shot_coords': formatting.stringToListOfFloat(row[3]),
+                    'person_coords': formatting.stringToListOfFloat(row[2]),
+                    'shot_coords': formatting.stringToListOfFloat_Shot(row[3]),
                     'position': row[4]
                 })
                 frames_added.append(row[0])
@@ -135,7 +135,7 @@ class Stats_DB_Handler:
             frame = element['frame']
             shooting_coords = element['shot_coords']
             player = element['player_num']
-            player_bbox = element['pose_coords']
+            player_bbox = element['person_coords']
             check = []
             for i in range(len(shooting_coords)):
                 check.append(min(player_bbox[i], shooting_coords[i]) /
@@ -182,13 +182,13 @@ class Stats_DB_Handler:
         rows = self._cursor.fetchall()
         basket_coords = {}
         for row in rows:
-            basket_coords[row[0]] = formatting.stringToListOfFloat(row[1])
+            basket_coords[row[0]] = formatting.stringToListOfFloat_Shot(row[1])
         return basket_coords
 
 
     def getAllPlayerIds(self) -> 'list[int]':
         self._cursor.execute('''
-                SELECT player_num FROM pose_db GROUP BY player_num
+                SELECT player_num FROM person_db GROUP BY player_num
             ''')
         rows = self._cursor.fetchall()
         player_ids = []
@@ -289,7 +289,7 @@ class Stats_DB_Handler:
         netbasket_coords = {}
         for i in range(1, max_frames+1):
             if i in frames_netbasket:
-                netbasket_coords[i] = formatting.stringToListOfFloat(coords_netbasket[i])
+                netbasket_coords[i] = formatting.stringToListOfFloat_Shot(coords_netbasket[i])
             else:
                 netbasket_coords[i] = []
         return netbasket_coords
@@ -297,7 +297,7 @@ class Stats_DB_Handler:
 
     def getPlayerCoordPerFrame(self, player_num: int):
         self._cursor.execute('''
-            SELECT frame_num, bbox_coords FROM pose_db WHERE player_num = (?)
+            SELECT frame_num, bbox_coords FROM person_db WHERE player_num = (?)
             ''', [player_num])
         rows = self._cursor.fetchall()
         playerCoords = {}

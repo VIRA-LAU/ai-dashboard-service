@@ -160,17 +160,17 @@ if __name__ == "__main__":
     print(torch.cuda.is_available())
 
     '''Weights Location'''
-    actions_weight = 'weights/actions_2.pt'
-    netbasket_weight = 'weights/net_hoop_basket_combined_april.pt'
+    actions_weight = 'weights/yolov7.pt'
+    netbasket_weight = 'weights/netbasket_3_5.pt'
 
     '''Dataset Location'''
-    actions_dataset_path = 'datasets/training_datasets/object_detection/PhoneDatasetThree_actions/data.yaml'
-    netbasket_dataset_path = 'datasets/training_datasets/object_detection/PhoneDatasetThree_netbasket/data.yaml'
+    actions_dataset_path = 'datasets/training_datasets/object_detection/actions/VIP_Demo/data.yaml'
+    netbasket_dataset_path = 'datasets/training_datasets/object_detection/netbasket/VIP_Demo/data.yaml'
 
     '''Hyperparameters Location'''
     hyp = 'train/cfg/object_detection/hyperparameters/hyp.scratch.p6.yaml'
 
     '''Run Training'''
-    run_train_detection(weights=actions_weight, device='0', data=actions_dataset_path, evolve=False, generations=30, epochs=100, batch_size=8, name='actions_train_nov_6', exist_ok=True, hyp=hyp)
-    # run_train_detection(weights=netbasket_weight, device='0', data=netbasket_dataset_path, evolve=False, generations=30, epochs=100, batch_size=8, name='netbasket_train_nov_6', exist_ok=True, hyp=hyp)
+    # run_train_detection(weights=actions_weight, device='0', data=actions_dataset_path, evolve=False, generations=30, epochs=100, batch_size=8, name='actions_VIP_Demo', exist_ok=True, hyp=hyp)
+    run_train_detection(weights=netbasket_weight, device='0', data=netbasket_dataset_path, evolve=False, generations=30, epochs=100, batch_size=8, name='netbasket_VIP_Demo', exist_ok=True, hyp=hyp)
     # run_train_segmentation()
