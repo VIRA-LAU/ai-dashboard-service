@@ -9,25 +9,24 @@ wandb/
 traced_model.pt
 
 datasets/*
-assets/templates/*
-assets/post_process.json
+datasets/logs/*
+datasets/post_process/*
+datasets/post_process/exported/*
+datasets/post_process/vids/*
+datasets/training_datasets/*
+datasets/training_datasets/instance_segmentation*
+datasets/training_datasets/object_detection*
+datasets/videos_input/*
+datasets/videos_temporal_frames/*
+datasets/videos_temporal_input/*
 
 .idea/
 traced_model.pt
 __pycache__
 
 utils/__pycache__/
-utils/TubeDETR/__pycache__/
-utils/TubeDETR/util/__pycache__/
-utils/TubeDETR/datasets/__pycache__/
-utils/TubeDETR/models/__pycache__/
-utils/TubeDETR/models/checkpoints/*
-!utils/TubeDETR/models/checkpoints/.gitkeep
 
 weights/*
 runs/
-
-yolov8n.pt
-sam_b.pt
 
 .idea/

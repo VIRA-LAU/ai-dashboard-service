@@ -65,6 +65,6 @@ def detect_all(game_id: str = ''):
 
 
 if __name__ == '__main__':
-    # extract_key_frames(dataset_folder='VIP_Demo3', video_max_len = 10000)
-    detect_all(game_id='VIP_Demo2')
+    extract_key_frames(dataset_folder='PhoneDatasetTwo', video_max_len = 5000)
+    # detect_all(game_id='VIP_Demo2')
     # TO FIX: Write the rescaled bounding boxes of person (and possibly action) to the db file

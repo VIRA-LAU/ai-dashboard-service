@@ -1,3 +1,5 @@
 uvicorn main:app --reload --host localhost
 
-ngrok.exe http --domain=polished-remotely-troll.ngrok-free.app 8000
+ngrok http --domain=only-master-goldfish.ngrok-free.app 8000
+
+http://localhost:4040/inspect/http
