@@ -1,0 +1,8 @@
+services:
+  ai-server:
+    image: fitchain-ai-server
+    build: .
+    ports:
+      - 8000:8000
+    volumes:
+      - .:/app
