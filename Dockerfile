@@ -20,16 +20,15 @@ COPY scripts/requirements.txt .
 
 ARG EXEC="conda run --live-stream -n fitchain"
 
+RUN ${SRC} && ${EXEC} pip install moviepy==1.0.3
+RUN ${SRC} && ${EXEC} pip install numpy==1.26.4 pandas==2.0.3
+RUN ${SRC} && ${EXEC} pip install easydict faiss-cpu
 RUN ${SRC} && ${EXEC} pip install -r requirements.txt
-RUN ${SRC} && ${EXEC} conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+RUN ${SRC} && ${EXEC} conda install pytorch torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+RUN ${SRC} && ${EXEC} conda install torchvision -c pytorch
 RUN ${SRC} && ${EXEC} conda install -c conda-forge pytorch-lightning
-RUN ${SRC} && ${EXEC} pip install \
-    # Fixes version incompatibility between numpy and pandas
-    numpy==1.26.4 pandas==2.0.3 \
-    # Fixes bug in moviepy import
-    moviepy==1.0.3 \
-    # Missing dependencies
-    easydict faiss-cpu
+RUN ${SRC} && ${EXEC} pip install --force-reinstall scipy==1.13.0 numpy
+RUN ${SRC} && ${EXEC} pip install --force-reinstall pandas
 
 # Copy and run web server
 WORKDIR /app
